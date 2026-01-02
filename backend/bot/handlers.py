@@ -980,3 +980,78 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Message me privately for help and to set up your birthday!",
             parse_mode="Markdown"
         )
+
+
+
+async def handle_new_chat_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle new members joining a group - register them and check for upcoming birthdays"""
+    if not update.message or not update.message.new_chat_members:
+        return
+    
+    chat = update.effective_chat
+    if chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        return
+    
+    # Make sure team exists
+    team = await db_service.get_team(chat.id)
+    if not team:
+        return
+    
+    for member in update.message.new_chat_members:
+        if member.is_bot:
+            continue
+        
+        # Check if user exists
+        existing_user = await db_service.get_user(member.id)
+        if existing_user:
+            # Add to team
+            await db_service.add_user_to_team(member.id, chat.id)
+            await db_service.add_member_to_team(chat.id, member.id)
+            
+            # Check if their birthday is within 14 days
+            if existing_user.get('date_of_birth') and existing_user.get('onboarded'):
+                await check_and_create_immediate_event(
+                    member.id, 
+                    existing_user['date_of_birth'], 
+                    context.bot
+                )
+                logger.info(f"Checked immediate birthday for new member {member.id} in team {chat.id}")
+
+
+async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle messages in groups to register users and check birthdays"""
+    if not update.message or not update.effective_user:
+        return
+    
+    chat = update.effective_chat
+    if chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        return
+    
+    user = update.effective_user
+    if user.is_bot:
+        return
+    
+    # Make sure team exists
+    team = await db_service.get_team(chat.id)
+    if not team:
+        return
+    
+    # Check if user is already in team
+    if user.id in team.get('members', []):
+        return
+    
+    # User is messaging in group but not registered - add them
+    existing_user = await db_service.get_user(user.id)
+    if existing_user:
+        await db_service.add_user_to_team(user.id, chat.id)
+        await db_service.add_member_to_team(chat.id, user.id)
+        
+        # Check if their birthday is within 14 days
+        if existing_user.get('date_of_birth') and existing_user.get('onboarded'):
+            await check_and_create_immediate_event(
+                user.id, 
+                existing_user['date_of_birth'], 
+                context.bot
+            )
+            logger.info(f"Registered user {user.id} in team {chat.id} via group message")
+
