@@ -1283,7 +1283,6 @@ async def handle_split_count_input(update: Update, text: str, event_id: str, pri
         "Now enter the payment details (e.g., Venmo, PayPal, bank details):",
         parse_mode="Markdown"
     )
-    )
 
 
 async def handle_payment_details_input(update: Update, text: str, event_id: str):
@@ -1297,15 +1296,18 @@ async def handle_payment_details_input(update: Update, text: str, event_id: str)
     user_states.pop(user_id, None)
     
     event = await db_service.get_event(event_id)
-    participants_count = len(event.get('participants', []))
     total_price = event.get('total_price', 0)
-    per_person = total_price / max(participants_count, 1)
+    
+    # Use split_count if set, otherwise fall back to participants count
+    split_count = event.get('split_count') or len(event.get('participants', [])) or 1
+    per_person = total_price / split_count
     
     await update.message.reply_text(
         f"✅ *Gift Finalized!*\n\n"
         f"🎁 Gift: {event.get('selected_gift')}\n"
         f"💵 Total: ${total_price:.2f}\n"
-        f"👥 Per person: ${per_person:.2f}\n"
+        f"👥 Split between: {split_count} people\n"
+        f"💵 Per person: ${per_person:.2f}\n"
         f"💳 Payment: {text}\n\n"
         "Notifying all participants now...",
         parse_mode="Markdown",
