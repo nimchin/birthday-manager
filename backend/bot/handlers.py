@@ -646,11 +646,10 @@ async def handle_accept_invitation(query, data):
         await db_service.create_contribution(contribution.model_dump())
     
     await query.edit_message_text(
-        f"✅ *You're in!*\n\n"
-        f"You've joined the gift collection for *{event.get('birthday_person_name')}*.\n\n"
+        f"✅ You're in!\n\n"
+        f"You've joined the gift collection for {event.get('birthday_person_name')}.\n\n"
         f"Birthday: {event.get('birthday_date')}\n\n"
         f"Use 'My Events' to vote, contribute, or become the organizer!",
-        parse_mode="Markdown",
         reply_markup=back_to_menu_keyboard()
     )
 
