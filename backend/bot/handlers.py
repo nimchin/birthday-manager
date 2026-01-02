@@ -1102,6 +1102,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_price_input(update, text, state_data.get("event_id"))
     elif state == "awaiting_payment_details":
         await handle_payment_details_input(update, text, state_data.get("event_id"))
+    elif state == "awaiting_discussion_link":
+        await handle_discussion_link_input(update, text, state_data.get("event_id"))
     else:
         await update.message.reply_text(
             "Use the menu to interact with me!",
