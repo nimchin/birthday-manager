@@ -17,12 +17,14 @@ Build a Telegram-first micro-SaaS called "Birthday Organizer Bot" that:
 - [x] Bot posts ONLY birthday greetings in main chat
 - [x] Private 1:1 onboarding (DOB, wishlist with text+links)
 - [x] 2-week advance notifications
+- [x] **Immediate event creation** when birthday is set within 14 days (edge case fix)
 - [x] Wishlist voting system
 - [x] One organizer per event
 - [x] Anonymous contribution tracking
 - [x] Payment details distribution
 - [x] Automated reminders (2 weeks, 3 days, 1 day)
 - [x] Birthday greetings on the day
+- [x] Auto-registration of team members when they message in group
 - [ ] Optional discussion group creation (partial - requires group creation permissions)
 
 ## What's Been Implemented (Jan 2, 2026)
