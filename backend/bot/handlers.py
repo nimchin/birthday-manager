@@ -752,7 +752,7 @@ async def handle_join_event(query, data):
 
 
 async def handle_contribute(query, data):
-    """Mark contribution as paid"""
+    """Mark contribution as paid or toggle it"""
     event_id = data.replace("contribute_", "")
     user_id = query.from_user.id
     
@@ -764,24 +764,22 @@ async def handle_contribute(query, data):
         )
         return
     
+    # Toggle contribution status
     if contribution.get('status') == 'paid':
-        await query.edit_message_text(
-            "✅ You've already marked your contribution as paid!",
-            reply_markup=back_to_menu_keyboard()
-        )
-        return
+        # Unmark contribution
+        await db_service.update_contribution(event_id, user_id, {
+            "status": "pending",
+            "marked_paid_at": None
+        })
+    else:
+        # Mark as paid
+        await db_service.update_contribution(event_id, user_id, {
+            "status": "paid",
+            "marked_paid_at": datetime.now(timezone.utc)
+        })
     
-    await db_service.update_contribution(event_id, user_id, {
-        "status": "paid",
-        "marked_paid_at": datetime.now(timezone.utc)
-    })
-    
-    await query.edit_message_text(
-        "✅ *Contribution Marked as Paid!*\n\n"
-        "Thank you for contributing!",
-        parse_mode="Markdown",
-        reply_markup=back_to_menu_keyboard()
-    )
+    # Return to event details
+    await show_event_details(query, f"event_{event_id}")
 
 
 async def show_voting_options(query, data):
