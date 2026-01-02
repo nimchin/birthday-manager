@@ -35,10 +35,16 @@ def event_invitation_keyboard(event_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def event_actions_keyboard(event_id: str, is_organizer: bool = False, has_organizer: bool = False) -> InlineKeyboardMarkup:
+def event_actions_keyboard(event_id: str, is_organizer: bool = False, has_organizer: bool = False, has_contributed: bool = False) -> InlineKeyboardMarkup:
     """Actions for a birthday event participant"""
+    # Contribution button with status indicator
+    if has_contributed:
+        contrib_btn = InlineKeyboardButton("✅ Contributed", callback_data=f"contribute_{event_id}")
+    else:
+        contrib_btn = InlineKeyboardButton("💰 Mark as Contributed", callback_data=f"contribute_{event_id}")
+    
     keyboard = [
-        [InlineKeyboardButton("💰 Mark as Contributed", callback_data=f"contribute_{event_id}")],
+        [contrib_btn],
         [InlineKeyboardButton("🗳️ Vote for Gift", callback_data=f"vote_{event_id}")],
         [InlineKeyboardButton("💬 Join Discussion", callback_data=f"discuss_{event_id}")]
     ]
@@ -54,6 +60,7 @@ def event_actions_keyboard(event_id: str, is_organizer: bool = False, has_organi
         ])
     
     keyboard.append([InlineKeyboardButton("❌ Decline Participation", callback_data=f"decline_{event_id}")])
+    keyboard.append([InlineKeyboardButton("⬅️ Back to Menu", callback_data="main_menu")])
     
     return InlineKeyboardMarkup(keyboard)
 
