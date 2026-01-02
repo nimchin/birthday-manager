@@ -87,10 +87,11 @@ def wishlist_keyboard(items: List[dict], event_id: str, user_id: int) -> InlineK
 
 def confirm_keyboard(action: str, event_id: str) -> InlineKeyboardMarkup:
     """Generic confirmation keyboard"""
+    short_id = event_id[:8]
     keyboard = [
         [
-            InlineKeyboardButton("✅ Yes", callback_data=f"confirm_{action}_{event_id}"),
-            InlineKeyboardButton("❌ No", callback_data=f"cancel_{action}_{event_id}")
+            InlineKeyboardButton("✅ Yes", callback_data=f"y_{action}_{short_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"n_{action}_{short_id}")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -98,18 +99,19 @@ def confirm_keyboard(action: str, event_id: str) -> InlineKeyboardMarkup:
 
 def finalize_options_keyboard(event_id: str, wishlist: List[dict]) -> InlineKeyboardMarkup:
     """Options for finalizing a gift"""
+    short_id = event_id[:8]
     keyboard = []
-    for item in wishlist:
+    for idx, item in enumerate(wishlist):
         votes = item.get('votes', 0)
-        title = item.get('title', 'Item')[:25]
+        title = item.get('title', 'Item')[:20]
         keyboard.append([
             InlineKeyboardButton(
-                f"🎁 {title} ({votes} votes)",
-                callback_data=f"selectgift_{event_id}_{item['id']}"
+                f"🎁 {title} ({votes})",
+                callback_data=f"sg_{short_id}_{idx}"
             )
         ])
-    keyboard.append([InlineKeyboardButton("✍️ Custom Gift", callback_data=f"customgift_{event_id}")])
-    keyboard.append([InlineKeyboardButton("⬅️ Cancel", callback_data=f"event_{event_id}")])
+    keyboard.append([InlineKeyboardButton("✍️ Custom Gift", callback_data=f"cg_{short_id}")])
+    keyboard.append([InlineKeyboardButton("⬅️ Cancel", callback_data=f"ev_{short_id}")])
     return InlineKeyboardMarkup(keyboard)
 
 
