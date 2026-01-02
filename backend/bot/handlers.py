@@ -111,7 +111,7 @@ async def join_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle bot being added to a group - silent registration"""
+    """Handle bot being added to a group"""
     chat = update.effective_chat
     
     # Check if team exists
@@ -123,6 +123,15 @@ async def handle_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         await db_service.create_team(team.model_dump())
         logger.info(f"New team registered: {chat.title} ({chat.id})")
+        
+        # Post welcome message in group (only for new teams)
+        await update.message.reply_text(
+            "🎂 *Birthday Organizer Bot* is here!\n\n"
+            "I'll help coordinate birthday gift collections for your team.\n\n"
+            "👉 *Everyone, please type* `/join` *to participate in birthday events!*\n\n"
+            "I'll only post birthday greetings here. All coordination happens privately.",
+            parse_mode="Markdown"
+        )
     
     # Register the user who added the bot to this team
     user = update.effective_user
