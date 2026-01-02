@@ -709,9 +709,11 @@ async def show_event_details(query, data):
     user_contribution = await db_service.get_contribution(event_id, user_id)
     has_contributed = user_contribution and user_contribution.get('status') == 'paid'
     
+    birthday_person = event.get('birthday_person_name', 'Unknown')
+    
     text = (
-        f"🎂 *Birthday Collection*\n\n"
-        f"👤 For: {event.get('birthday_person_name', 'Unknown')}\n"
+        f"🎂 Birthday Collection\n\n"
+        f"👤 For: {birthday_person}\n"
         f"📅 Date: {event.get('birthday_date', 'Unknown')}\n"
         f"📊 Status: {status_text}\n"
         f"👑 Organizer: {organizer_text}\n"
@@ -735,7 +737,6 @@ async def show_event_details(query, data):
     
     await query.edit_message_text(
         text,
-        parse_mode="Markdown",
         reply_markup=event_actions_keyboard(event_id, is_organizer, has_organizer, has_contributed)
     )
 
