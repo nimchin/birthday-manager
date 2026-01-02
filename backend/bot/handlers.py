@@ -897,24 +897,22 @@ async def handle_discussion_request(query, data):
     if discussion_group and discussion_group.get('invite_link'):
         # Group exists, send invite link
         await query.edit_message_text(
-            f"💬 *Discussion Group*\n\n"
-            f"Join the discussion for *{event.get('birthday_person_name')}*'s gift:\n\n"
+            f"💬 Discussion Group\n\n"
+            f"Join the discussion for {event.get('birthday_person_name')}'s gift:\n\n"
             f"👉 {discussion_group.get('invite_link')}",
-            parse_mode="Markdown",
             reply_markup=back_to_menu_keyboard(),
             disable_web_page_preview=True
         )
     elif is_organizer:
         # Organizer can set up a discussion group
         await query.edit_message_text(
-            "💬 *Create Discussion Group*\n\n"
+            "💬 Create Discussion Group\n\n"
             "To create a discussion group:\n\n"
             "1️⃣ Create a new Telegram group\n"
             "2️⃣ Add participants (NOT the birthday person!)\n"
             "3️⃣ Create an invite link (Group Settings → Invite Link)\n"
             "4️⃣ Send me the invite link here\n\n"
-            "Send the link now, or /cancel to go back.",
-            parse_mode="Markdown"
+            "Send the link now, or /cancel to go back."
         )
         user_states[user_id] = {
             "state": "awaiting_discussion_link",
