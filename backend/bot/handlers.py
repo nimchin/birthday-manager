@@ -493,13 +493,12 @@ async def check_and_send_birthday_invitations_for_new_member(user_id: int, team_
             await bot.send_message(
                 chat_id=user_id,
                 text=(
-                    f"🎂 *Birthday Coming Up!*\n\n"
-                    f"*{event.get('birthday_person_name')}*'s birthday is on *{event.get('birthday_date')}* ({days_until} days away)\n"
+                    f"🎂 Birthday Coming Up!\n\n"
+                    f"{event.get('birthday_person_name')}'s birthday is on {event.get('birthday_date')} ({days_until} days away)\n"
                     f"Team: {team_name}"
                     f"{wishlist_text}\n\n"
                     f"Would you like to participate in the gift collection?"
                 ),
-                parse_mode="Markdown",
                 reply_markup=event_invitation_keyboard(event.get('id')),
                 disable_web_page_preview=True
             )
