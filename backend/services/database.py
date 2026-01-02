@@ -225,6 +225,13 @@ class DatabaseService:
         await self.db.discussion_groups.insert_one(group_data)
         return group_data
     
+    async def update_discussion_group(self, event_id: str, update_data: Dict) -> bool:
+        result = await self.db.discussion_groups.update_one(
+            {"event_id": event_id},
+            {"$set": update_data}
+        )
+        return result.modified_count > 0
+    
     async def add_member_to_discussion_group(self, event_id: str, user_id: int) -> bool:
         result = await self.db.discussion_groups.update_one(
             {"event_id": event_id},
