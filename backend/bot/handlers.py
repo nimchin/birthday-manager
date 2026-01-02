@@ -239,9 +239,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_become_organizer(query, data)
     elif data.startswith("finalize_"):
         await show_finalize_options(query, data)
-    elif data.startswith("selectgift_"):
+    elif data.startswith("sg_"):
         await handle_gift_selection(query, data)
-    elif data.startswith("customgift_"):
+    elif data.startswith("cg_"):
         await prompt_custom_gift(query, data)
     elif data.startswith("stepdown_"):
         await handle_organizer_stepdown(query, data)
