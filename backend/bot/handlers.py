@@ -1,0 +1,876 @@
+"""
+Telegram Bot Handlers for Birthday Organizer Bot
+"""
+import logging
+from telegram import Update, Bot
+from telegram.ext import ContextTypes
+from telegram.constants import ChatType
+from datetime import datetime, timezone, timedelta
+import uuid
+
+from services.database import db_service
+from models.schemas import User, Team, BirthdayEvent, Contribution, WishlistItem, ContributionStatus, EventStatus
+from bot.keyboards import (
+    main_menu_keyboard, join_collection_keyboard, event_actions_keyboard,
+    wishlist_keyboard, wishlist_manage_keyboard, wishlist_remove_keyboard,
+    events_list_keyboard, back_to_menu_keyboard, month_keyboard, day_keyboard,
+    finalize_options_keyboard, confirm_keyboard
+)
+
+logger = logging.getLogger(__name__)
+
+# Conversation states storage (simple in-memory for MVP)
+user_states = {}
+
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start command - different behavior for groups vs private"""
+    chat_type = update.effective_chat.type
+    user = update.effective_user
+    
+    if chat_type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        # Bot added to group - register team
+        await handle_group_start(update, context)
+    else:
+        # Private chat - user onboarding
+        await handle_private_start(update, context)
+
+
+async def handle_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle bot being added to a group"""
+    chat = update.effective_chat
+    
+    # Check if team exists
+    existing_team = await db_service.get_team(chat.id)
+    if not existing_team:
+        team = Team(
+            telegram_chat_id=chat.id,
+            title=chat.title or "Unknown Team"
+        )
+        await db_service.create_team(team.model_dump())
+        logger.info(f"New team registered: {chat.title} ({chat.id})")
+    
+    await update.message.reply_text(
+        "🎂 *Birthday Organizer Bot* is ready!\n\n"
+        "I'll help coordinate birthday gift collections for your team.\n"
+        "Team members should message me privately to set up their birthdays.\n\n"
+        "When a birthday approaches, I'll post a collection announcement here!",
+        parse_mode="Markdown"
+    )
+
+
+async def handle_private_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle private chat start - user onboarding"""
+    user = update.effective_user
+    
+    # Check if user exists
+    existing_user = await db_service.get_user(user.id)
+    
+    if not existing_user:
+        # Create new user
+        new_user = User(
+            telegram_id=user.id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name
+        )
+        await db_service.create_user(new_user.model_dump())
+        
+        await update.message.reply_text(
+            f"👋 Welcome, {user.first_name}!\n\n"
+            "I'm the *Birthday Organizer Bot*. I help teams coordinate birthday gift collections.\n\n"
+            "Let's get you set up:\n"
+            "1️⃣ Set your birthday date\n"
+            "2️⃣ Add items to your wishlist (optional)\n"
+            "3️⃣ Add me to your team's group chat\n\n"
+            "Use the menu below to get started!",
+            parse_mode="Markdown",
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        await update.message.reply_text(
+            f"👋 Welcome back, {user.first_name}!\n\n"
+            "What would you like to do?",
+            reply_markup=main_menu_keyboard()
+        )
+
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Main callback query handler"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = query.from_user.id
+    
+    logger.info(f"Callback: {data} from user {user_id}")
+    
+    # Route to appropriate handler
+    if data == "main_menu":
+        await show_main_menu(query)
+    elif data == "set_birthday":
+        await show_birthday_month_selection(query)
+    elif data.startswith("month_"):
+        await show_birthday_day_selection(query, data)
+    elif data.startswith("day_"):
+        await handle_birthday_day_selection(query, data)
+    elif data == "view_wishlist":
+        await show_wishlist(query)
+    elif data == "add_wishlist_item":
+        await prompt_wishlist_add(query)
+    elif data == "remove_wishlist_item":
+        await show_wishlist_remove(query)
+    elif data.startswith("delwish_"):
+        await handle_wishlist_delete(query, data)
+    elif data == "my_events":
+        await show_my_events(query)
+    elif data.startswith("event_"):
+        await show_event_details(query, data)
+    elif data.startswith("join_"):
+        await handle_join_event(query, data)
+    elif data.startswith("contribute_"):
+        await handle_contribute(query, data)
+    elif data.startswith("vote_"):
+        await show_voting_options(query, data)
+    elif data.startswith("votewish_"):
+        await handle_vote(query, data)
+    elif data.startswith("discuss_"):
+        await handle_discussion_request(query, data)
+    elif data.startswith("organize_"):
+        await handle_become_organizer(query, data)
+    elif data.startswith("finalize_"):
+        await show_finalize_options(query, data)
+    elif data.startswith("selectgift_"):
+        await handle_gift_selection(query, data)
+    elif data.startswith("customgift_"):
+        await prompt_custom_gift(query, data)
+    elif data.startswith("stepdown_"):
+        await handle_organizer_stepdown(query, data)
+    elif data.startswith("decline_"):
+        await handle_decline_participation(query, data)
+    elif data.startswith("view_contrib_"):
+        await show_contributions_summary(query, data)
+    elif data == "help":
+        await show_help(query)
+
+
+async def show_main_menu(query):
+    """Show main menu"""
+    await query.edit_message_text(
+        "🎂 *Birthday Organizer Bot*\n\nWhat would you like to do?",
+        parse_mode="Markdown",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+async def show_birthday_month_selection(query):
+    """Show month selection for birthday"""
+    await query.edit_message_text(
+        "📅 *Set Your Birthday*\n\nSelect your birth month:",
+        parse_mode="Markdown",
+        reply_markup=month_keyboard()
+    )
+
+
+async def show_birthday_day_selection(query, data):
+    """Show day selection for birthday"""
+    month = data.split("_")[1]
+    month_names = {
+        "01": "January", "02": "February", "03": "March", "04": "April",
+        "05": "May", "06": "June", "07": "July", "08": "August",
+        "09": "September", "10": "October", "11": "November", "12": "December"
+    }
+    await query.edit_message_text(
+        f"📅 *Set Your Birthday*\n\nMonth: {month_names.get(month, month)}\nSelect your birth day:",
+        parse_mode="Markdown",
+        reply_markup=day_keyboard(month)
+    )
+
+
+async def handle_birthday_day_selection(query, data):
+    """Handle birthday day selection and save"""
+    parts = data.split("_")
+    month = parts[1]
+    day = parts[2]
+    user_id = query.from_user.id
+    
+    date_of_birth = f"{month}-{day}"
+    
+    await db_service.update_user(user_id, {
+        "date_of_birth": date_of_birth,
+        "onboarded": True
+    })
+    
+    month_names = {
+        "01": "January", "02": "February", "03": "March", "04": "April",
+        "05": "May", "06": "June", "07": "July", "08": "August",
+        "09": "September", "10": "October", "11": "November", "12": "December"
+    }
+    
+    await query.edit_message_text(
+        f"✅ *Birthday Set!*\n\n"
+        f"Your birthday: {month_names.get(month)} {int(day)}\n\n"
+        "Now add items to your wishlist so your team knows what to get you!",
+        parse_mode="Markdown",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+async def show_wishlist(query):
+    """Show user's wishlist"""
+    user_id = query.from_user.id
+    user = await db_service.get_user(user_id)
+    
+    if not user:
+        await query.edit_message_text("Please use /start first.")
+        return
+    
+    wishlist = user.get('wishlist', [])
+    
+    if not wishlist:
+        text = "🎁 *Your Wishlist*\n\nYour wishlist is empty. Add items so your team knows what to get you!"
+    else:
+        text = "🎁 *Your Wishlist*\n\n"
+        for i, item in enumerate(wishlist, 1):
+            title = item.get('title', 'Unknown')
+            url = item.get('url', '')
+            if url:
+                text += f"{i}. [{title}]({url})\n"
+            else:
+                text += f"{i}. {title}\n"
+    
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=wishlist_manage_keyboard(),
+        disable_web_page_preview=True
+    )
+
+
+async def prompt_wishlist_add(query):
+    """Prompt user to add wishlist item"""
+    user_id = query.from_user.id
+    user_states[user_id] = {"state": "awaiting_wishlist_item"}
+    
+    await query.edit_message_text(
+        "🎁 *Add Wishlist Item*\n\n"
+        "Send me the item you want to add.\n\n"
+        "Format: `Item name` or `Item name | URL`\n\n"
+        "Example:\n"
+        "• `AirPods Pro`\n"
+        "• `Sony Headphones | https://amazon.com/...`",
+        parse_mode="Markdown",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+
+async def show_wishlist_remove(query):
+    """Show wishlist items for removal"""
+    user_id = query.from_user.id
+    user = await db_service.get_user(user_id)
+    
+    if not user or not user.get('wishlist'):
+        await query.edit_message_text(
+            "Your wishlist is empty!",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    await query.edit_message_text(
+        "🗑️ *Remove Wishlist Item*\n\nSelect an item to remove:",
+        parse_mode="Markdown",
+        reply_markup=wishlist_remove_keyboard(user['wishlist'])
+    )
+
+
+async def handle_wishlist_delete(query, data):
+    """Delete wishlist item"""
+    item_id = data.replace("delwish_", "")
+    user_id = query.from_user.id
+    
+    user = await db_service.get_user(user_id)
+    if user:
+        wishlist = [item for item in user.get('wishlist', []) if item.get('id') != item_id]
+        await db_service.update_user(user_id, {"wishlist": wishlist})
+    
+    await query.edit_message_text(
+        "✅ Item removed from your wishlist!",
+        reply_markup=wishlist_manage_keyboard()
+    )
+
+
+async def show_my_events(query):
+    """Show events user is participating in"""
+    user_id = query.from_user.id
+    events = await db_service.get_user_events(user_id)
+    
+    if not events:
+        await query.edit_message_text(
+            "📋 *My Events*\n\n"
+            "You're not participating in any birthday collections yet.\n\n"
+            "Join a collection when it's announced in your team chat!",
+            parse_mode="Markdown",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    await query.edit_message_text(
+        "📋 *My Events*\n\nSelect an event to view details:",
+        parse_mode="Markdown",
+        reply_markup=events_list_keyboard(events)
+    )
+
+
+async def show_event_details(query, data):
+    """Show details of a specific event"""
+    event_id = data.replace("event_", "")
+    user_id = query.from_user.id
+    
+    event = await db_service.get_event(event_id)
+    if not event:
+        await query.edit_message_text(
+            "Event not found.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    status_text = {
+        'upcoming': '📅 Upcoming',
+        'voting': '🗳️ Voting in progress',
+        'finalized': '✅ Gift finalized',
+        'completed': '🎉 Completed'
+    }.get(event.get('status'), 'Unknown')
+    
+    organizer_text = "None (be the first!)" if not event.get('organizer_id') else "Assigned"
+    
+    # Get contribution stats
+    contributions = await db_service.get_event_contributions(event_id)
+    paid_count = sum(1 for c in contributions if c.get('status') == 'paid')
+    
+    text = (
+        f"🎂 *Birthday Collection*\n\n"
+        f"👤 For: {event.get('birthday_person_name', 'Unknown')}\n"
+        f"📅 Date: {event.get('birthday_date', 'Unknown')}\n"
+        f"📊 Status: {status_text}\n"
+        f"👑 Organizer: {organizer_text}\n"
+        f"👥 Participants: {len(event.get('participants', []))}\n"
+        f"💰 Contributions: {paid_count}\n"
+    )
+    
+    if event.get('selected_gift'):
+        text += f"\n🎁 Selected Gift: {event.get('selected_gift')}"
+    
+    if event.get('total_price'):
+        per_person = event['total_price'] / max(len(event.get('participants', [])), 1)
+        text += f"\n💵 Total: ${event['total_price']:.2f} (${per_person:.2f}/person)"
+    
+    if event.get('payment_details'):
+        text += f"\n💳 Payment: {event.get('payment_details')}"
+    
+    is_organizer = event.get('organizer_id') == user_id
+    has_organizer = event.get('organizer_id') is not None
+    
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=event_actions_keyboard(event_id, is_organizer, has_organizer)
+    )
+
+
+async def handle_join_event(query, data):
+    """Handle joining a birthday collection"""
+    event_id = data.replace("join_", "")
+    user_id = query.from_user.id
+    
+    event = await db_service.get_event(event_id)
+    if not event:
+        await query.message.reply_text("This event no longer exists.")
+        return
+    
+    # Check if user is the birthday person
+    if event.get('birthday_person_id') == user_id:
+        await query.message.reply_text(
+            "🎂 This is YOUR birthday! You can't join your own collection.\n"
+            "Sit back and enjoy the surprise!"
+        )
+        return
+    
+    # Add participant
+    await db_service.add_participant_to_event(event_id, user_id)
+    
+    # Create contribution record
+    existing_contribution = await db_service.get_contribution(event_id, user_id)
+    if not existing_contribution:
+        contribution = Contribution(
+            event_id=event_id,
+            user_id=user_id
+        )
+        await db_service.create_contribution(contribution.model_dump())
+    
+    # Send private message with event details
+    await query.message.reply_text(
+        f"🎉 You've joined the birthday collection for {event.get('birthday_person_name')}!\n\n"
+        "I'll send you updates and voting options here in our private chat.",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+async def handle_contribute(query, data):
+    """Mark contribution as paid"""
+    event_id = data.replace("contribute_", "")
+    user_id = query.from_user.id
+    
+    contribution = await db_service.get_contribution(event_id, user_id)
+    if not contribution:
+        await query.edit_message_text(
+            "You're not part of this collection.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    if contribution.get('status') == 'paid':
+        await query.edit_message_text(
+            "✅ You've already marked your contribution as paid!",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    await db_service.update_contribution(event_id, user_id, {
+        "status": "paid",
+        "marked_paid_at": datetime.now(timezone.utc)
+    })
+    
+    await query.edit_message_text(
+        "✅ *Contribution Marked as Paid!*\n\n"
+        "Thank you for contributing!",
+        parse_mode="Markdown",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+
+async def show_voting_options(query, data):
+    """Show wishlist items for voting"""
+    event_id = data.replace("vote_", "")
+    user_id = query.from_user.id
+    
+    event = await db_service.get_event(event_id)
+    if not event:
+        await query.edit_message_text("Event not found.", reply_markup=back_to_menu_keyboard())
+        return
+    
+    wishlist = event.get('wishlist_snapshot', [])
+    if not wishlist:
+        await query.edit_message_text(
+            "📋 No wishlist items to vote on.\n\n"
+            "The birthday person hasn't added any items to their wishlist.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    await query.edit_message_text(
+        f"🗳️ *Vote for Gift*\n\n"
+        f"For: {event.get('birthday_person_name')}\n\n"
+        "Select items you think we should get:",
+        parse_mode="Markdown",
+        reply_markup=wishlist_keyboard(wishlist, event_id, user_id)
+    )
+
+
+async def handle_vote(query, data):
+    """Handle vote for wishlist item"""
+    parts = data.replace("votewish_", "").split("_")
+    event_id = parts[0]
+    item_id = parts[1]
+    user_id = query.from_user.id
+    
+    await db_service.vote_for_wishlist_item(event_id, item_id, user_id)
+    
+    # Refresh voting view
+    event = await db_service.get_event(event_id)
+    wishlist = event.get('wishlist_snapshot', [])
+    
+    await query.edit_message_text(
+        f"🗳️ *Vote for Gift*\n\n"
+        f"For: {event.get('birthday_person_name')}\n\n"
+        "Select items you think we should get:",
+        parse_mode="Markdown",
+        reply_markup=wishlist_keyboard(wishlist, event_id, user_id)
+    )
+
+
+async def handle_discussion_request(query, data):
+    """Handle request to join/create discussion group"""
+    event_id = data.replace("discuss_", "")
+    user_id = query.from_user.id
+    
+    event = await db_service.get_event(event_id)
+    if not event:
+        await query.edit_message_text("Event not found.", reply_markup=back_to_menu_keyboard())
+        return
+    
+    discussion_group = await db_service.get_discussion_group(event_id)
+    
+    if discussion_group:
+        # Group exists, send invite link
+        await query.edit_message_text(
+            f"💬 *Discussion Group*\n\n"
+            f"A discussion group already exists for this birthday!\n\n"
+            f"Join here: {discussion_group.get('invite_link', 'Link not available')}",
+            parse_mode="Markdown",
+            reply_markup=back_to_menu_keyboard()
+        )
+    else:
+        # No group yet - inform user
+        await query.edit_message_text(
+            "💬 *Discussion Group*\n\n"
+            "No discussion group has been created yet.\n\n"
+            "The organizer can create one, or discuss via the main collection.\n"
+            "This feature requires the bot to have group creation permissions.",
+            parse_mode="Markdown",
+            reply_markup=back_to_menu_keyboard()
+        )
+
+
+async def handle_become_organizer(query, data):
+    """Handle becoming an organizer"""
+    event_id = data.replace("organize_", "")
+    user_id = query.from_user.id
+    
+    event = await db_service.get_event(event_id)
+    if not event:
+        await query.edit_message_text("Event not found.", reply_markup=back_to_menu_keyboard())
+        return
+    
+    if event.get('organizer_id'):
+        await query.edit_message_text(
+            "This event already has an organizer.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    await db_service.update_event(event_id, {"organizer_id": user_id})
+    
+    await query.edit_message_text(
+        "👑 *You are now the Organizer!*\n\n"
+        "Responsibilities:\n"
+        "• Monitor contribution count\n"
+        "• Finalize the gift selection\n"
+        "• Enter total price and payment details\n"
+        "• Coordinate the gift purchase\n\n"
+        "You can step down anytime if needed.",
+        parse_mode="Markdown",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+
+async def show_finalize_options(query, data):
+    """Show options for finalizing gift"""
+    event_id = data.replace("finalize_", "")
+    user_id = query.from_user.id
+    
+    event = await db_service.get_event(event_id)
+    if not event or event.get('organizer_id') != user_id:
+        await query.edit_message_text(
+            "Only the organizer can finalize the gift.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    wishlist = event.get('wishlist_snapshot', [])
+    
+    await query.edit_message_text(
+        "✅ *Finalize Gift Selection*\n\n"
+        "Select the gift to purchase or enter a custom gift:",
+        parse_mode="Markdown",
+        reply_markup=finalize_options_keyboard(event_id, wishlist)
+    )
+
+
+async def handle_gift_selection(query, data):
+    """Handle gift selection from wishlist"""
+    parts = data.replace("selectgift_", "").split("_")
+    event_id = parts[0]
+    item_id = parts[1]
+    user_id = query.from_user.id
+    
+    event = await db_service.get_event(event_id)
+    if not event or event.get('organizer_id') != user_id:
+        return
+    
+    # Find selected item
+    selected_item = None
+    for item in event.get('wishlist_snapshot', []):
+        if item.get('id') == item_id:
+            selected_item = item
+            break
+    
+    if selected_item:
+        await db_service.update_event(event_id, {
+            "selected_gift": selected_item.get('title'),
+            "status": "finalized",
+            "finalized_at": datetime.now(timezone.utc)
+        })
+        
+        user_states[user_id] = {
+            "state": "awaiting_price",
+            "event_id": event_id
+        }
+        
+        await query.edit_message_text(
+            f"🎁 *Gift Selected!*\n\n"
+            f"Selected: {selected_item.get('title')}\n\n"
+            "Now enter the total price (just the number):\n"
+            "Example: `49.99`",
+            parse_mode="Markdown"
+        )
+
+
+async def prompt_custom_gift(query, data):
+    """Prompt for custom gift entry"""
+    event_id = data.replace("customgift_", "")
+    user_id = query.from_user.id
+    
+    user_states[user_id] = {
+        "state": "awaiting_custom_gift",
+        "event_id": event_id
+    }
+    
+    await query.edit_message_text(
+        "✍️ *Custom Gift*\n\n"
+        "Enter the gift description:",
+        parse_mode="Markdown"
+    )
+
+
+async def handle_organizer_stepdown(query, data):
+    """Handle organizer stepping down"""
+    event_id = data.replace("stepdown_", "")
+    user_id = query.from_user.id
+    
+    event = await db_service.get_event(event_id)
+    if not event or event.get('organizer_id') != user_id:
+        return
+    
+    await db_service.update_event(event_id, {"organizer_id": None})
+    
+    await query.edit_message_text(
+        "You've stepped down as organizer.\n"
+        "Another participant can now take over.",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+
+async def handle_decline_participation(query, data):
+    """Handle declining participation"""
+    event_id = data.replace("decline_", "")
+    user_id = query.from_user.id
+    
+    await db_service.update_contribution(event_id, user_id, {"status": "declined"})
+    
+    await query.edit_message_text(
+        "You've declined participation in this collection.\n"
+        "No worries! You can join future collections.",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+
+async def show_contributions_summary(query, data):
+    """Show anonymous contribution summary to organizer"""
+    event_id = data.replace("view_contrib_", "")
+    user_id = query.from_user.id
+    
+    event = await db_service.get_event(event_id)
+    if not event or event.get('organizer_id') != user_id:
+        await query.edit_message_text(
+            "Only the organizer can view contribution details.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    contributions = await db_service.get_event_contributions(event_id)
+    
+    paid = sum(1 for c in contributions if c.get('status') == 'paid')
+    pending = sum(1 for c in contributions if c.get('status') == 'pending')
+    declined = sum(1 for c in contributions if c.get('status') == 'declined')
+    
+    await query.edit_message_text(
+        f"📊 *Contribution Summary*\n\n"
+        f"✅ Paid: {paid}\n"
+        f"⏳ Pending: {pending}\n"
+        f"❌ Declined: {declined}\n\n"
+        f"Total participants: {len(contributions)}",
+        parse_mode="Markdown",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+
+async def show_help(query):
+    """Show help message"""
+    await query.edit_message_text(
+        "❓ *Birthday Organizer Bot Help*\n\n"
+        "*For Team Members:*\n"
+        "1. Set your birthday in the bot\n"
+        "2. Add items to your wishlist\n"
+        "3. When a birthday is announced, click 'Join Collection'\n"
+        "4. Vote for gifts, contribute, and discuss!\n\n"
+        "*For Organizers:*\n"
+        "• Anyone can become an organizer\n"
+        "• Monitor contributions (anonymous count)\n"
+        "• Finalize gift selection\n"
+        "• Enter price and payment details\n\n"
+        "*Commands:*\n"
+        "/start - Main menu\n"
+        "/help - This help message\n\n"
+        "Questions? Contact your team admin!",
+        parse_mode="Markdown",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text messages based on user state"""
+    if update.effective_chat.type != ChatType.PRIVATE:
+        return
+    
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    state_data = user_states.get(user_id, {})
+    state = state_data.get("state")
+    
+    if state == "awaiting_wishlist_item":
+        await handle_wishlist_item_input(update, text)
+    elif state == "awaiting_custom_gift":
+        await handle_custom_gift_input(update, text, state_data.get("event_id"))
+    elif state == "awaiting_price":
+        await handle_price_input(update, text, state_data.get("event_id"))
+    elif state == "awaiting_payment_details":
+        await handle_payment_details_input(update, text, state_data.get("event_id"))
+    else:
+        await update.message.reply_text(
+            "Use the menu to interact with me!",
+            reply_markup=main_menu_keyboard()
+        )
+
+
+async def handle_wishlist_item_input(update: Update, text: str):
+    """Process wishlist item input"""
+    user_id = update.effective_user.id
+    
+    # Parse input: "Item name" or "Item name | URL"
+    parts = text.split("|")
+    title = parts[0].strip()
+    url = parts[1].strip() if len(parts) > 1 else None
+    
+    item = WishlistItem(title=title, url=url)
+    
+    user = await db_service.get_user(user_id)
+    wishlist = user.get('wishlist', []) if user else []
+    wishlist.append(item.model_dump())
+    
+    await db_service.update_user(user_id, {"wishlist": wishlist})
+    
+    # Clear state
+    user_states.pop(user_id, None)
+    
+    await update.message.reply_text(
+        f"✅ Added to your wishlist: *{title}*",
+        parse_mode="Markdown",
+        reply_markup=wishlist_manage_keyboard()
+    )
+
+
+async def handle_custom_gift_input(update: Update, text: str, event_id: str):
+    """Process custom gift input"""
+    user_id = update.effective_user.id
+    
+    await db_service.update_event(event_id, {
+        "selected_gift": text,
+        "status": "finalized",
+        "finalized_at": datetime.now(timezone.utc)
+    })
+    
+    user_states[user_id] = {
+        "state": "awaiting_price",
+        "event_id": event_id
+    }
+    
+    await update.message.reply_text(
+        f"🎁 *Gift Selected!*\n\n"
+        f"Selected: {text}\n\n"
+        "Now enter the total price (just the number):\n"
+        "Example: `49.99`",
+        parse_mode="Markdown"
+    )
+
+
+async def handle_price_input(update: Update, text: str, event_id: str):
+    """Process price input"""
+    user_id = update.effective_user.id
+    
+    try:
+        price = float(text.replace("$", "").replace(",", "").strip())
+    except ValueError:
+        await update.message.reply_text(
+            "Please enter a valid number. Example: `49.99`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    await db_service.update_event(event_id, {"total_price": price})
+    
+    user_states[user_id] = {
+        "state": "awaiting_payment_details",
+        "event_id": event_id
+    }
+    
+    await update.message.reply_text(
+        f"💵 *Price Set: ${price:.2f}*\n\n"
+        "Now enter the payment details (e.g., Venmo, PayPal, bank details):",
+        parse_mode="Markdown"
+    )
+
+
+async def handle_payment_details_input(update: Update, text: str, event_id: str):
+    """Process payment details input and notify participants"""
+    user_id = update.effective_user.id
+    
+    await db_service.update_event(event_id, {"payment_details": text})
+    
+    # Clear state
+    user_states.pop(user_id, None)
+    
+    event = await db_service.get_event(event_id)
+    participants_count = len(event.get('participants', []))
+    total_price = event.get('total_price', 0)
+    per_person = total_price / max(participants_count, 1)
+    
+    await update.message.reply_text(
+        f"✅ *Gift Finalized!*\n\n"
+        f"🎁 Gift: {event.get('selected_gift')}\n"
+        f"💵 Total: ${total_price:.2f}\n"
+        f"👥 Per person: ${per_person:.2f}\n"
+        f"💳 Payment: {text}\n\n"
+        "All participants will be notified with payment instructions.",
+        parse_mode="Markdown",
+        reply_markup=main_menu_keyboard()
+    )
+    
+    # Note: In production, this would send notifications to all participants
+    # For MVP, the scheduler handles this
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /help command"""
+    if update.effective_chat.type == ChatType.PRIVATE:
+        await update.message.reply_text(
+            "❓ *Birthday Organizer Bot Help*\n\n"
+            "Use /start to access the main menu and all features!",
+            parse_mode="Markdown",
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        await update.message.reply_text(
+            "Message me privately for help and to set up your birthday!",
+            parse_mode="Markdown"
+        )

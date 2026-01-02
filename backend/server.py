@@ -1,81 +1,30 @@
-from fastapi import FastAPI, APIRouter
+"""
+Birthday Organizer Bot - FastAPI Backend
+Telegram-first micro-SaaS for team birthday gift collections
+"""
+from fastapi import FastAPI, APIRouter, Request, HTTPException
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from contextlib import asynccontextmanager
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
+from pydantic import BaseModel, Field
+from typing import List, Optional
 from datetime import datetime, timezone
 
+from telegram import Update, Bot
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
+from bot.handlers import start_command, handle_callback, handle_message, help_command
+from bot.scheduler import setup_scheduler, stop_scheduler
+from services.database import db_service
+
+# Setup
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
-
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
-
-# Create the main app without a prefix
-app = FastAPI()
-
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
-
-
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class StatusCheckCreate(BaseModel):
-    client_name: str
-
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
-app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Configure logging
 logging.basicConfig(
@@ -84,6 +33,220 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
+# Telegram Bot setup
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+if not TELEGRAM_TOKEN:
+    logger.warning("TELEGRAM_TOKEN not set - bot functionality disabled")
+
+# MongoDB connection
+mongo_url = os.environ['MONGO_URL']
+client = AsyncIOMotorClient(mongo_url)
+db = client[os.environ['DB_NAME']]
+
+# Telegram Application (global for webhook handling)
+telegram_app = None
+bot = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler"""
+    global telegram_app, bot
+    
+    if TELEGRAM_TOKEN:
+        # Initialize Telegram bot
+        telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
+        bot = telegram_app.bot
+        
+        # Add handlers
+        telegram_app.add_handler(CommandHandler("start", start_command))
+        telegram_app.add_handler(CommandHandler("help", help_command))
+        telegram_app.add_handler(CallbackQueryHandler(handle_callback))
+        telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        
+        # Initialize the application
+        await telegram_app.initialize()
+        await telegram_app.start()
+        
+        # Set up webhook
+        webhook_url = os.environ.get('WEBHOOK_URL')
+        if webhook_url:
+            await bot.set_webhook(url=f"{webhook_url}/api/telegram/webhook")
+            logger.info(f"Webhook set to: {webhook_url}/api/telegram/webhook")
+        else:
+            # Use polling for development
+            logger.info("Starting bot in polling mode (no WEBHOOK_URL set)")
+            await telegram_app.updater.start_polling(drop_pending_updates=True)
+        
+        # Setup scheduler
+        setup_scheduler(bot)
+        
+        logger.info("Birthday Organizer Bot started successfully!")
+    
+    yield
+    
+    # Cleanup
+    if telegram_app:
+        stop_scheduler()
+        await telegram_app.stop()
+        await telegram_app.shutdown()
+    
     client.close()
+    logger.info("Shutdown complete")
+
+
+# Create FastAPI app
+app = FastAPI(
+    title="Birthday Organizer Bot",
+    description="Telegram bot for coordinating team birthday gift collections",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Create API router
+api_router = APIRouter(prefix="/api")
+
+
+# Pydantic models for API
+class HealthResponse(BaseModel):
+    status: str
+    bot_active: bool
+    timestamp: str
+
+
+class StatsResponse(BaseModel):
+    total_users: int
+    total_teams: int
+    active_events: int
+    completed_events: int
+
+
+# API Routes
+@api_router.get("/", response_model=dict)
+async def root():
+    """Root endpoint"""
+    return {
+        "message": "Birthday Organizer Bot API",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
+
+
+@api_router.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint"""
+    return HealthResponse(
+        status="healthy",
+        bot_active=bool(TELEGRAM_TOKEN and bot),
+        timestamp=datetime.now(timezone.utc).isoformat()
+    )
+
+
+@api_router.get("/stats", response_model=StatsResponse)
+async def get_stats():
+    """Get basic statistics"""
+    users_count = await db.users.count_documents({})
+    teams_count = await db.teams.count_documents({})
+    active_events = await db.birthday_events.count_documents({"status": {"$ne": "completed"}})
+    completed_events = await db.birthday_events.count_documents({"status": "completed"})
+    
+    return StatsResponse(
+        total_users=users_count,
+        total_teams=teams_count,
+        active_events=active_events,
+        completed_events=completed_events
+    )
+
+
+@api_router.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    """Telegram webhook endpoint"""
+    if not telegram_app:
+        raise HTTPException(status_code=503, detail="Bot not initialized")
+    
+    try:
+        data = await request.json()
+        update = Update.de_json(data, bot)
+        await telegram_app.process_update(update)
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/telegram/set-webhook")
+async def set_webhook(webhook_url: str):
+    """Manually set webhook URL"""
+    if not bot:
+        raise HTTPException(status_code=503, detail="Bot not initialized")
+    
+    try:
+        await bot.set_webhook(url=f"{webhook_url}/api/telegram/webhook")
+        return {"status": "success", "webhook_url": f"{webhook_url}/api/telegram/webhook"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/telegram/webhook-info")
+async def get_webhook_info():
+    """Get current webhook info"""
+    if not bot:
+        raise HTTPException(status_code=503, detail="Bot not initialized")
+    
+    try:
+        info = await bot.get_webhook_info()
+        return {
+            "url": info.url,
+            "has_custom_certificate": info.has_custom_certificate,
+            "pending_update_count": info.pending_update_count,
+            "last_error_message": info.last_error_message,
+            "max_connections": info.max_connections
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Manual trigger endpoints (for testing)
+@api_router.post("/trigger/check-birthdays")
+async def trigger_birthday_check():
+    """Manually trigger birthday check"""
+    if not bot:
+        raise HTTPException(status_code=503, detail="Bot not initialized")
+    
+    from bot.scheduler import check_upcoming_birthdays
+    await check_upcoming_birthdays(bot)
+    return {"status": "Birthday check triggered"}
+
+
+@api_router.post("/trigger/send-greetings")
+async def trigger_greetings():
+    """Manually trigger birthday greetings"""
+    if not bot:
+        raise HTTPException(status_code=503, detail="Bot not initialized")
+    
+    from bot.scheduler import send_birthday_greetings
+    await send_birthday_greetings(bot)
+    return {"status": "Birthday greetings triggered"}
+
+
+# Include router
+app.include_router(api_router)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Error handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled error: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
