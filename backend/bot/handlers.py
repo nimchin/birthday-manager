@@ -36,6 +36,68 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_private_start(update, context)
 
 
+async def join_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /join command - register user with the team"""
+    chat_type = update.effective_chat.type
+    
+    if chat_type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        await update.message.reply_text(
+            "Use this command in a group chat to join the team!",
+            parse_mode="Markdown"
+        )
+        return
+    
+    chat = update.effective_chat
+    user = update.effective_user
+    
+    # Make sure team exists
+    existing_team = await db_service.get_team(chat.id)
+    if not existing_team:
+        team = Team(
+            telegram_chat_id=chat.id,
+            title=chat.title or "Unknown Team"
+        )
+        await db_service.create_team(team.model_dump())
+        logger.info(f"New team registered via /join: {chat.title} ({chat.id})")
+    
+    # Check if user exists
+    existing_user = await db_service.get_user(user.id)
+    if not existing_user:
+        # Create user
+        new_user = User(
+            telegram_id=user.id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name
+        )
+        await db_service.create_user(new_user.model_dump())
+        existing_user = new_user.model_dump()
+        
+        await update.message.reply_text(
+            f"👋 Hi {user.first_name}! I've registered you.\n\n"
+            "Please message me privately (@bithday_manager_bot) to set your birthday and wishlist!",
+            parse_mode="Markdown"
+        )
+    else:
+        # Add to team
+        await db_service.add_user_to_team(user.id, chat.id)
+        await db_service.add_member_to_team(chat.id, user.id)
+        
+        # Check if birthday is within 14 days
+        if existing_user.get('date_of_birth') and existing_user.get('onboarded'):
+            await check_and_create_immediate_event(user.id, existing_user['date_of_birth'], context.bot)
+            await update.message.reply_text(
+                f"✅ {user.first_name} joined the team! Your birthday is registered.",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                f"✅ {user.first_name} joined the team!\n\n"
+                "Message me privately (@bithday_manager_bot) to set your birthday.",
+                parse_mode="Markdown"
+            )
+
+
 async def handle_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle bot being added to a group"""
     chat = update.effective_chat
