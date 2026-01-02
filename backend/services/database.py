@@ -4,8 +4,14 @@ Database service for Birthday Organizer Bot
 from motor.motor_asyncio import AsyncIOMotorClient
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from dotenv import load_dotenv
 import os
 import logging
+
+# Load environment
+ROOT_DIR = Path(__file__).parent.parent
+load_dotenv(ROOT_DIR / '.env')
 
 logger = logging.getLogger(__name__)
 
