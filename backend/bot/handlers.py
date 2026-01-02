@@ -313,8 +313,8 @@ async def handle_birthday_day_selection(query, data):
 
 
 async def check_and_create_immediate_event(user_id: int, date_of_birth: str, bot):
-    """Check if user's birthday is within 14 days and create event immediately"""
-    from bot.keyboards import join_collection_keyboard
+    """Check if user's birthday is within 14 days and create event with private invitations"""
+    from bot.keyboards import event_invitation_keyboard
     
     today = datetime.now(timezone.utc)
     current_year = today.year
@@ -352,6 +352,10 @@ async def check_and_create_immediate_event(user_id: int, date_of_birth: str, bot
             if existing:
                 continue
             
+            # Get team info
+            team = await db_service.get_team(team_id)
+            team_name = team.get('title', 'your team') if team else 'your team'
+            
             # Create new birthday event
             event = BirthdayEvent(
                 birthday_person_id=user_id,
@@ -364,25 +368,9 @@ async def check_and_create_immediate_event(user_id: int, date_of_birth: str, bot
             )
             
             await db_service.create_event(event.model_dump())
-            logger.info(f"Created immediate birthday event for {user_name} on {birthday_full}")
+            logger.info(f"Created birthday event for {user_name} on {birthday_full} in team {team_id}")
             
-            # Announce in team chat
-            try:
-                await bot.send_message(
-                    chat_id=team_id,
-                    text=(
-                        f"🎂 *Upcoming Birthday Alert!*\n\n"
-                        f"{user_name}'s birthday is coming up on {birthday_full}!\n\n"
-                        f"Click below to join the gift collection and make their day special!"
-                    ),
-                    parse_mode="Markdown",
-                    reply_markup=join_collection_keyboard(event.id)
-                )
-                logger.info(f"Sent immediate birthday announcement to team {team_id}")
-            except Exception as e:
-                logger.error(f"Failed to send announcement to team {team_id}: {e}")
-            
-            # Notify all team members privately (except birthday person)
+            # Send PRIVATE invitations to all team members (except birthday person)
             team_users = await db_service.get_users_by_team(team_id)
             for member in team_users:
                 member_id = member.get('telegram_id')
@@ -390,18 +378,102 @@ async def check_and_create_immediate_event(user_id: int, date_of_birth: str, bot
                     continue
                 
                 try:
+                    wishlist_text = ""
+                    if user.get('wishlist'):
+                        wishlist_text = "\n\n*Wishlist:*\n"
+                        for item in user.get('wishlist', [])[:5]:
+                            title = item.get('title', 'Item')
+                            url = item.get('url', '')
+                            if url:
+                                wishlist_text += f"• [{title}]({url})\n"
+                            else:
+                                wishlist_text += f"• {title}\n"
+                    
                     await bot.send_message(
                         chat_id=member_id,
                         text=(
-                            f"🎂 *Birthday Alert!*\n\n"
-                            f"{user_name}'s birthday is coming up on {birthday_full}!\n\n"
-                            f"Join the collection to participate in the gift!"
+                            f"🎂 *Birthday Coming Up!*\n\n"
+                            f"*{user_name}*'s birthday is on *{birthday_full}* ({days_until} days away)\n"
+                            f"Team: {team_name}"
+                            f"{wishlist_text}\n\n"
+                            f"Would you like to participate in the gift collection?"
                         ),
                         parse_mode="Markdown",
-                        reply_markup=join_collection_keyboard(event.id)
+                        reply_markup=event_invitation_keyboard(event.id),
+                        disable_web_page_preview=True
                     )
+                    logger.info(f"Sent birthday invitation to {member_id} for event {event.id}")
                 except Exception as e:
-                    logger.debug(f"Could not notify member {member_id}: {e}")
+                    logger.debug(f"Could not send invitation to {member_id}: {e}")
+
+
+async def check_and_send_birthday_invitations_for_new_member(user_id: int, team_id: int, bot):
+    """Send pending birthday invitations to a newly joined team member"""
+    from bot.keyboards import event_invitation_keyboard
+    
+    today = datetime.now(timezone.utc)
+    
+    # Get all active events for this team
+    events = await db_service.get_events_by_status("voting")
+    
+    for event in events:
+        if event.get('team_id') != team_id:
+            continue
+        
+        # Don't invite the birthday person
+        if event.get('birthday_person_id') == user_id:
+            continue
+        
+        # Check if user already participated
+        if user_id in event.get('participants', []):
+            continue
+        
+        # Check if already has a contribution record
+        existing_contribution = await db_service.get_contribution(event.get('id'), user_id)
+        if existing_contribution:
+            continue
+        
+        # Get team info
+        team = await db_service.get_team(team_id)
+        team_name = team.get('title', 'your team') if team else 'your team'
+        
+        # Calculate days until
+        birthday_date = datetime.strptime(event.get('birthday_date'), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        days_until = (birthday_date.date() - today.date()).days
+        
+        if days_until <= 0:
+            continue
+        
+        # Get birthday person's wishlist
+        birthday_person = await db_service.get_user(event.get('birthday_person_id'))
+        wishlist_text = ""
+        if birthday_person and birthday_person.get('wishlist'):
+            wishlist_text = "\n\n*Wishlist:*\n"
+            for item in birthday_person.get('wishlist', [])[:5]:
+                title = item.get('title', 'Item')
+                url = item.get('url', '')
+                if url:
+                    wishlist_text += f"• [{title}]({url})\n"
+                else:
+                    wishlist_text += f"• {title}\n"
+        
+        try:
+            await bot.send_message(
+                chat_id=user_id,
+                text=(
+                    f"🎂 *Birthday Coming Up!*\n\n"
+                    f"*{event.get('birthday_person_name')}*'s birthday is on *{event.get('birthday_date')}* ({days_until} days away)\n"
+                    f"Team: {team_name}"
+                    f"{wishlist_text}\n\n"
+                    f"Would you like to participate in the gift collection?"
+                ),
+                parse_mode="Markdown",
+                reply_markup=event_invitation_keyboard(event.get('id')),
+                disable_web_page_preview=True
+            )
+            logger.info(f"Sent pending birthday invitation to new member {user_id}")
+        except Exception as e:
+            logger.debug(f"Could not send invitation to {user_id}: {e}")
 
 
 async def show_wishlist(query):
