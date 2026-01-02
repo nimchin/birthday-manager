@@ -229,8 +229,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_contribute(query, data)
     elif data.startswith("vote_"):
         await show_voting_options(query, data)
-    elif data.startswith("votewish_"):
+    elif data.startswith("vw_"):
         await handle_vote(query, data)
+    elif data.startswith("ev_"):
+        await handle_short_event_back(query, data)
     elif data.startswith("discuss_"):
         await handle_discussion_request(query, data)
     elif data.startswith("organize_"):
