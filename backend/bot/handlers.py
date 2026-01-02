@@ -50,6 +50,17 @@ async def handle_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await db_service.create_team(team.model_dump())
         logger.info(f"New team registered: {chat.title} ({chat.id})")
     
+    # Register the user who added the bot to this team
+    user = update.effective_user
+    if user:
+        existing_user = await db_service.get_user(user.id)
+        if existing_user:
+            await db_service.add_user_to_team(user.id, chat.id)
+            await db_service.add_member_to_team(chat.id, user.id)
+            # Check if this user's birthday is within 14 days
+            if existing_user.get('date_of_birth') and existing_user.get('onboarded'):
+                await check_and_create_immediate_event(user.id, existing_user['date_of_birth'], context.bot)
+    
     await update.message.reply_text(
         "🎂 *Birthday Organizer Bot* is ready!\n\n"
         "I'll help coordinate birthday gift collections for your team.\n"
