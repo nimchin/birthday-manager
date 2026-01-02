@@ -1299,7 +1299,7 @@ async def handle_split_count_input(update: Update, text: str, event_id: str, pri
     
     await update.message.reply_text(
         f"👥 *Split between {split_count} people*\n"
-        f"💵 Each person pays: *${per_person:.2f}*\n\n"
+        f"💵 Each person pays: *{per_person:.2f}*\n\n"
         "Now enter the payment details (e.g., Venmo, PayPal, bank details):",
         parse_mode="Markdown"
     )
@@ -1325,9 +1325,9 @@ async def handle_payment_details_input(update: Update, text: str, event_id: str)
     await update.message.reply_text(
         f"✅ *Gift Finalized!*\n\n"
         f"🎁 Gift: {event.get('selected_gift')}\n"
-        f"💵 Total: ${total_price:.2f}\n"
+        f"💵 Total: {total_price:.2f}\n"
         f"👥 Split between: {split_count} people\n"
-        f"💵 Per person: ${per_person:.2f}\n"
+        f"💵 Per person: {per_person:.2f}\n"
         f"💳 Payment: {text}\n\n"
         "Notifying all participants now...",
         parse_mode="Markdown",
@@ -1346,7 +1346,7 @@ async def handle_payment_details_input(update: Update, text: str, event_id: str)
                     f"🎁 *Gift Collection Finalized!*\n\n"
                     f"For: *{event.get('birthday_person_name')}*'s birthday\n\n"
                     f"🎁 Gift: {event.get('selected_gift')}\n"
-                    f"💵 Your share: *${per_person:.2f}*\n\n"
+                    f"💵 Your share: *{per_person:.2f}*\n\n"
                     f"💳 *Payment Details:*\n{text}\n\n"
                     f"Please send your contribution and mark it as paid in the bot!"
                 ),
