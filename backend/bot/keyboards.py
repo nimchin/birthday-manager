@@ -61,18 +61,20 @@ def event_actions_keyboard(event_id: str, is_organizer: bool = False, has_organi
 def wishlist_keyboard(items: List[dict], event_id: str, user_id: int) -> InlineKeyboardMarkup:
     """Wishlist voting keyboard"""
     keyboard = []
-    for item in items:
+    # Use short event ID (first 8 chars) to stay within 64 byte limit
+    short_event_id = event_id[:8]
+    for idx, item in enumerate(items):
         votes = item.get('votes', 0)
         voted = user_id in item.get('voted_by', [])
         vote_icon = "✅" if voted else "🗳️"
-        title = item.get('title', 'Item')[:30]
+        title = item.get('title', 'Item')[:25]
         keyboard.append([
             InlineKeyboardButton(
-                f"{vote_icon} {title} ({votes} votes)",
-                callback_data=f"votewish_{event_id}_{item['id']}"
+                f"{vote_icon} {title} ({votes})",
+                callback_data=f"vw_{short_event_id}_{idx}"
             )
         ])
-    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data=f"event_{event_id}")])
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data=f"ev_{short_event_id}")])
     return InlineKeyboardMarkup(keyboard)
 
 
