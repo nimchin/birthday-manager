@@ -125,8 +125,10 @@ async def handle_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await update.message.reply_text(
         "🎂 *Birthday Organizer Bot* is ready!\n\n"
-        "I'll help coordinate birthday gift collections for your team.\n"
-        "Team members should message me privately to set up their birthdays.\n\n"
+        "I'll help coordinate birthday gift collections for your team.\n\n"
+        "*To join this team:*\n"
+        "1️⃣ Each team member types `/join` in this chat\n"
+        "2️⃣ Then message me privately (@bithday_manager_bot) to set your birthday\n\n"
         "When a birthday approaches, I'll post a collection announcement here!",
         parse_mode="Markdown"
     )
