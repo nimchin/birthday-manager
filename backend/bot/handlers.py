@@ -572,7 +572,7 @@ async def show_my_events(query):
         await query.edit_message_text(
             "📋 *My Events*\n\n"
             "You're not participating in any birthday collections yet.\n\n"
-            "Join a collection when it's announced in your team chat!",
+            "You'll receive invitations when a teammate's birthday approaches!",
             parse_mode="Markdown",
             reply_markup=back_to_menu_keyboard()
         )
@@ -582,6 +582,72 @@ async def show_my_events(query):
         "📋 *My Events*\n\nSelect an event to view details:",
         parse_mode="Markdown",
         reply_markup=events_list_keyboard(events)
+    )
+
+
+async def handle_accept_invitation(query, data):
+    """Handle accepting a birthday event invitation"""
+    event_id = data.replace("accept_", "")
+    user_id = query.from_user.id
+    
+    event = await db_service.get_event(event_id)
+    if not event:
+        await query.edit_message_text(
+            "This event no longer exists.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    # Check if user is the birthday person
+    if event.get('birthday_person_id') == user_id:
+        await query.edit_message_text(
+            "🎂 This is YOUR birthday! Enjoy the surprise!",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    # Add participant
+    await db_service.add_participant_to_event(event_id, user_id)
+    
+    # Create contribution record
+    existing_contribution = await db_service.get_contribution(event_id, user_id)
+    if not existing_contribution:
+        contribution = Contribution(
+            event_id=event_id,
+            user_id=user_id
+        )
+        await db_service.create_contribution(contribution.model_dump())
+    
+    await query.edit_message_text(
+        f"✅ *You're in!*\n\n"
+        f"You've joined the gift collection for *{event.get('birthday_person_name')}*.\n\n"
+        f"Birthday: {event.get('birthday_date')}\n\n"
+        f"Use 'My Events' to vote, contribute, or become the organizer!",
+        parse_mode="Markdown",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+
+async def handle_skip_invitation(query, data):
+    """Handle skipping a birthday event invitation"""
+    event_id = data.replace("skip_", "")
+    user_id = query.from_user.id
+    
+    # Create a declined contribution record
+    existing_contribution = await db_service.get_contribution(event_id, user_id)
+    if not existing_contribution:
+        contribution = Contribution(
+            event_id=event_id,
+            user_id=user_id,
+            status=ContributionStatus.DECLINED
+        )
+        await db_service.create_contribution(contribution.model_dump())
+    else:
+        await db_service.update_contribution(event_id, user_id, {"status": "declined"})
+    
+    await query.edit_message_text(
+        "👍 No problem! You can always join later from 'My Events' if you change your mind.",
+        reply_markup=back_to_menu_keyboard()
     )
 
 
