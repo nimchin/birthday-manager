@@ -24,6 +24,17 @@ def join_collection_keyboard(event_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def event_invitation_keyboard(event_id: str) -> InlineKeyboardMarkup:
+    """Invitation buttons for private birthday event notification"""
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Participate", callback_data=f"accept_{event_id}"),
+            InlineKeyboardButton("❌ Skip", callback_data=f"skip_{event_id}")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
 def event_actions_keyboard(event_id: str, is_organizer: bool = False, has_organizer: bool = False) -> InlineKeyboardMarkup:
     """Actions for a birthday event participant"""
     keyboard = [
