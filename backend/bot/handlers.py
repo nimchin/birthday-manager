@@ -23,6 +23,21 @@ logger = logging.getLogger(__name__)
 user_states = {}
 
 
+def get_display_name(user_data: dict) -> str:
+    """Get display name - prefer @username, fallback to first_name"""
+    username = user_data.get('username')
+    if username:
+        return f"@{username}"
+    return user_data.get('first_name', 'User')
+
+
+def get_display_name_from_telegram_user(user) -> str:
+    """Get display name from Telegram user object"""
+    if user.username:
+        return f"@{user.username}"
+    return user.first_name or 'User'
+
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command - different behavior for groups vs private"""
     chat_type = update.effective_chat.type
