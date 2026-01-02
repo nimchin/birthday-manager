@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
 
 
+def get_display_name(user_data: dict) -> str:
+    """Get display name - prefer @username, fallback to first_name"""
+    username = user_data.get('username')
+    if username:
+        return f"@{username}"
+    return user_data.get('first_name', 'User')
+
+
 async def check_upcoming_birthdays(bot: Bot):
     """Check for birthdays 2 weeks away and create events with private invitations"""
     logger.info("Checking for upcoming birthdays...")
@@ -41,7 +49,7 @@ async def check_upcoming_birthdays(bot: Bot):
                 continue
             
             user_id = user.get('telegram_id')
-            user_name = user.get('first_name', 'Team member')
+            user_name = get_display_name(user)
             
             # Check if event already exists
             existing = await db_service.get_event_by_person_and_date(
