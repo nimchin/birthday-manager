@@ -1218,6 +1218,60 @@ async def handle_payment_details_input(update: Update, text: str, event_id: str)
     # For MVP, the scheduler handles this
 
 
+async def handle_discussion_link_input(update: Update, text: str, event_id: str):
+    """Process discussion group invite link"""
+    from models.schemas import DiscussionGroup
+    
+    user_id = update.effective_user.id
+    
+    # Handle cancel
+    if text.lower() == '/cancel':
+        user_states.pop(user_id, None)
+        await update.message.reply_text(
+            "Cancelled. No discussion group was created.",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+    
+    # Validate it looks like a Telegram invite link
+    if not ('t.me/' in text or 'telegram.me/' in text):
+        await update.message.reply_text(
+            "⚠️ That doesn't look like a Telegram invite link.\n\n"
+            "Please send a valid link (e.g., https://t.me/+ABC123) or /cancel to go back."
+        )
+        return
+    
+    # Clear state
+    user_states.pop(user_id, None)
+    
+    # Check if discussion group already exists
+    existing_group = await db_service.get_discussion_group(event_id)
+    if existing_group:
+        await db_service.update_discussion_group(event_id, {"invite_link": text.strip()})
+    else:
+        # Create discussion group record
+        discussion_group = DiscussionGroup(
+            event_id=event_id,
+            telegram_group_id=0,  # We don't have the actual group ID
+            invite_link=text.strip()
+        )
+        await db_service.create_discussion_group(discussion_group.model_dump())
+    
+    # Update event with discussion group reference
+    await db_service.update_event(event_id, {"discussion_group_id": 1})  # Mark as having a group
+    
+    event = await db_service.get_event(event_id)
+    
+    await update.message.reply_text(
+        f"✅ *Discussion Group Created!*\n\n"
+        f"For: {event.get('birthday_person_name')}'s birthday\n\n"
+        f"Participants can now click 'Join Discussion' to get the invite link.\n\n"
+        f"⚠️ Remember: Don't add the birthday person to the group!",
+        parse_mode="Markdown",
+        reply_markup=main_menu_keyboard()
+    )
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command"""
     if update.effective_chat.type == ChatType.PRIVATE:
