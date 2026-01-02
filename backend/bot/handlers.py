@@ -219,6 +219,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_my_events(query)
     elif data.startswith("event_"):
         await show_event_details(query, data)
+    elif data.startswith("accept_"):
+        await handle_accept_invitation(query, data)
+    elif data.startswith("skip_"):
+        await handle_skip_invitation(query, data)
     elif data.startswith("join_"):
         await handle_join_event(query, data)
     elif data.startswith("contribute_"):
