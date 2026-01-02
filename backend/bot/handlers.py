@@ -839,26 +839,52 @@ async def handle_discussion_request(query, data):
         return
     
     discussion_group = await db_service.get_discussion_group(event_id)
+    is_organizer = event.get('organizer_id') == user_id
     
-    if discussion_group:
+    if discussion_group and discussion_group.get('invite_link'):
         # Group exists, send invite link
         await query.edit_message_text(
             f"💬 *Discussion Group*\n\n"
-            f"A discussion group already exists for this birthday!\n\n"
-            f"Join here: {discussion_group.get('invite_link', 'Link not available')}",
+            f"Join the discussion for *{event.get('birthday_person_name')}*'s gift:\n\n"
+            f"👉 {discussion_group.get('invite_link')}",
             parse_mode="Markdown",
-            reply_markup=back_to_menu_keyboard()
+            reply_markup=back_to_menu_keyboard(),
+            disable_web_page_preview=True
         )
-    else:
-        # No group yet - inform user
+    elif is_organizer:
+        # Organizer can set up a discussion group
         await query.edit_message_text(
-            "💬 *Discussion Group*\n\n"
-            "No discussion group has been created yet.\n\n"
-            "The organizer can create one, or discuss via the main collection.\n"
-            "This feature requires the bot to have group creation permissions.",
-            parse_mode="Markdown",
-            reply_markup=back_to_menu_keyboard()
+            "💬 *Create Discussion Group*\n\n"
+            "To create a discussion group:\n\n"
+            "1️⃣ Create a new Telegram group\n"
+            "2️⃣ Add participants (NOT the birthday person!)\n"
+            "3️⃣ Create an invite link (Group Settings → Invite Link)\n"
+            "4️⃣ Send me the invite link here\n\n"
+            "Send the link now, or /cancel to go back.",
+            parse_mode="Markdown"
         )
+        user_states[user_id] = {
+            "state": "awaiting_discussion_link",
+            "event_id": event_id
+        }
+    else:
+        # Not organizer, no group yet
+        if event.get('organizer_id'):
+            await query.edit_message_text(
+                "💬 *Discussion Group*\n\n"
+                "No discussion group has been created yet.\n\n"
+                "The organizer can set one up. Ask them to click 'Join Discussion' to create it!",
+                parse_mode="Markdown",
+                reply_markup=back_to_menu_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                "💬 *Discussion Group*\n\n"
+                "No discussion group has been created yet.\n\n"
+                "Become the organizer to create a discussion group!",
+                parse_mode="Markdown",
+                reply_markup=back_to_menu_keyboard()
+            )
 
 
 async def handle_become_organizer(query, data):
