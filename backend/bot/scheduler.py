@@ -11,7 +11,7 @@ import os
 
 from services.database import db_service
 from models.schemas import BirthdayEvent, EventStatus
-from bot.keyboards import join_collection_keyboard
+from bot.keyboards import event_invitation_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +19,11 @@ scheduler = AsyncIOScheduler()
 
 
 async def check_upcoming_birthdays(bot: Bot):
-    """Check for birthdays 2 weeks away and create events"""
+    """Check for birthdays 2 weeks away and create events with private invitations"""
     logger.info("Checking for upcoming birthdays...")
     
     target_date = datetime.now(timezone.utc) + timedelta(days=14)
     target_mmdd = target_date.strftime("%m-%d")
-    birthday_year = target_date.strftime("%Y")
     birthday_full = target_date.strftime("%Y-%m-%d")
     
     # Get all teams
@@ -32,6 +31,7 @@ async def check_upcoming_birthdays(bot: Bot):
     
     for team in teams:
         team_id = team.get('telegram_chat_id')
+        team_name = team.get('title', 'your team')
         
         # Get team members with birthday on target date
         users = await db_service.get_users_by_team(team_id)
@@ -65,23 +65,19 @@ async def check_upcoming_birthdays(bot: Bot):
             await db_service.create_event(event.model_dump())
             logger.info(f"Created birthday event for {user_name} on {birthday_full}")
             
-            # Announce in team chat
-            try:
-                await bot.send_message(
-                    chat_id=team_id,
-                    text=(
-                        f"🎂 *Upcoming Birthday Alert!*\n\n"
-                        f"{user_name}'s birthday is coming up on {birthday_full}!\n\n"
-                        f"Click below to join the gift collection and make their day special!"
-                    ),
-                    parse_mode="Markdown",
-                    reply_markup=join_collection_keyboard(event.id)
-                )
-                logger.info(f"Sent birthday announcement to team {team_id}")
-            except Exception as e:
-                logger.error(f"Failed to send announcement to team {team_id}: {e}")
+            # Build wishlist text
+            wishlist_text = ""
+            if user.get('wishlist'):
+                wishlist_text = "\n\n*Wishlist:*\n"
+                for item in user.get('wishlist', [])[:5]:
+                    title = item.get('title', 'Item')
+                    url = item.get('url', '')
+                    if url:
+                        wishlist_text += f"• [{title}]({url})\n"
+                    else:
+                        wishlist_text += f"• {title}\n"
             
-            # Notify all team members privately (except birthday person)
+            # Send PRIVATE invitations to all team members (except birthday person)
             for member in users:
                 member_id = member.get('telegram_id')
                 if member_id == user_id:
@@ -91,13 +87,17 @@ async def check_upcoming_birthdays(bot: Bot):
                     await bot.send_message(
                         chat_id=member_id,
                         text=(
-                            f"🎂 *Birthday Alert!*\n\n"
-                            f"{user_name}'s birthday is coming up on {birthday_full}!\n\n"
-                            f"Join the collection to participate in the gift!"
+                            f"🎂 *Birthday Coming Up!*\n\n"
+                            f"*{user_name}*'s birthday is on *{birthday_full}* (14 days away)\n"
+                            f"Team: {team_name}"
+                            f"{wishlist_text}\n\n"
+                            f"Would you like to participate in the gift collection?"
                         ),
                         parse_mode="Markdown",
-                        reply_markup=join_collection_keyboard(event.id)
+                        reply_markup=event_invitation_keyboard(event.id),
+                        disable_web_page_preview=True
                     )
+                    logger.info(f"Sent birthday invitation to {member_id}")
                 except Exception as e:
                     logger.debug(f"Could not notify member {member_id}: {e}")
 
