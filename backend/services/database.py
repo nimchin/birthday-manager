@@ -248,17 +248,32 @@ class DatabaseService:
     
     # Wishlist vote operations
     async def vote_for_wishlist_item(self, event_id: str, item_id: str, user_id: int) -> bool:
-        """Add vote to a wishlist item in an event"""
+        """Vote for a wishlist item - single vote only, can change vote"""
         event = await self.get_event(event_id)
         if not event:
             return False
         
         wishlist = event.get('wishlist_snapshot', [])
+        already_voted_this = False
+        
+        # First, remove user's vote from ALL items
         for item in wishlist:
-            if item['id'] == item_id:
-                if user_id not in item.get('voted_by', []):
+            voted_by = item.get('voted_by', [])
+            if user_id in voted_by:
+                if item['id'] == item_id:
+                    already_voted_this = True
+                voted_by.remove(user_id)
+                item['votes'] = max(0, item.get('votes', 1) - 1)
+                item['voted_by'] = voted_by
+        
+        # If user clicked the same item, just remove vote (toggle off)
+        # If user clicked different item, add vote to new item
+        if not already_voted_this:
+            for item in wishlist:
+                if item['id'] == item_id:
                     item['votes'] = item.get('votes', 0) + 1
                     item.setdefault('voted_by', []).append(user_id)
+                    break
         
         return await self.update_event(event_id, {"wishlist_snapshot": wishlist})
 
