@@ -922,18 +922,16 @@ async def handle_discussion_request(query, data):
         # Not organizer, no group yet
         if event.get('organizer_id'):
             await query.edit_message_text(
-                "💬 *Discussion Group*\n\n"
+                "💬 Discussion Group\n\n"
                 "No discussion group has been created yet.\n\n"
                 "The organizer can set one up. Ask them to click 'Join Discussion' to create it!",
-                parse_mode="Markdown",
                 reply_markup=back_to_menu_keyboard()
             )
         else:
             await query.edit_message_text(
-                "💬 *Discussion Group*\n\n"
+                "💬 Discussion Group\n\n"
                 "No discussion group has been created yet.\n\n"
                 "Become the organizer to create a discussion group!",
-                parse_mode="Markdown",
                 reply_markup=back_to_menu_keyboard()
             )
 
