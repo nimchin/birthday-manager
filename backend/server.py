@@ -61,6 +61,7 @@ async def lifespan(app: FastAPI):
         # Add handlers
         telegram_app.add_handler(CommandHandler("start", start_command))
         telegram_app.add_handler(CommandHandler("help", help_command))
+        telegram_app.add_handler(CommandHandler("join", join_command))
         telegram_app.add_handler(CallbackQueryHandler(handle_callback))
         telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
         telegram_app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_chat_members))
