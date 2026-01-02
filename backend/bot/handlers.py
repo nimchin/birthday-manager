@@ -1210,7 +1210,7 @@ async def handle_custom_gift_input(update: Update, text: str, event_id: str):
 
 
 async def handle_price_input(update: Update, text: str, event_id: str):
-    """Process price input"""
+    """Process price input - then ask for number of people to split"""
     user_id = update.effective_user.id
     
     try:
@@ -1224,15 +1224,63 @@ async def handle_price_input(update: Update, text: str, event_id: str):
     
     await db_service.update_event(event_id, {"total_price": price})
     
+    # Get event info for context
+    event = await db_service.get_event(event_id)
+    participants_count = len(event.get('participants', []))
+    
+    # Get team members count
+    team_id = event.get('team_id')
+    team = await db_service.get_team(team_id)
+    team_members_count = len(team.get('members', [])) if team else 0
+    
+    user_states[user_id] = {
+        "state": "awaiting_split_count",
+        "event_id": event_id,
+        "price": price
+    }
+    
+    await update.message.reply_text(
+        f"💵 *Price Set: ${price:.2f}*\n\n"
+        f"📊 *Current stats:*\n"
+        f"• Accepted participants: {participants_count}\n"
+        f"• Total team members: {team_members_count}\n\n"
+        f"How many people should split the cost?\n\n"
+        f"Enter a number, or type `{participants_count}` for current participants:",
+        parse_mode="Markdown"
+    )
+
+
+async def handle_split_count_input(update: Update, text: str, event_id: str, price: float):
+    """Process the number of people to split the cost"""
+    user_id = update.effective_user.id
+    
+    try:
+        split_count = int(text.strip())
+        if split_count <= 0:
+            raise ValueError("Must be positive")
+    except ValueError:
+        await update.message.reply_text(
+            "Please enter a valid positive number.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Store split count in event
+    await db_service.update_event(event_id, {"split_count": split_count})
+    
+    per_person = price / split_count
+    
     user_states[user_id] = {
         "state": "awaiting_payment_details",
         "event_id": event_id
     }
     
     await update.message.reply_text(
-        f"💵 *Price Set: ${price:.2f}*\n\n"
+        f"👥 *Split between {split_count} people*\n"
+        f"💵 Each person pays: *${per_person:.2f}*\n\n"
         "Now enter the payment details (e.g., Venmo, PayPal, bank details):",
         parse_mode="Markdown"
+    )
     )
 
 
