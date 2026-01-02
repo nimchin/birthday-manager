@@ -111,7 +111,7 @@ async def join_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle bot being added to a group"""
+    """Handle bot being added to a group - silent registration"""
     chat = update.effective_chat
     
     # Check if team exists
@@ -131,19 +131,25 @@ async def handle_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if existing_user:
             await db_service.add_user_to_team(user.id, chat.id)
             await db_service.add_member_to_team(chat.id, user.id)
-            # Check if this user's birthday is within 14 days
-            if existing_user.get('date_of_birth') and existing_user.get('onboarded'):
-                await check_and_create_immediate_event(user.id, existing_user['date_of_birth'], context.bot)
-    
-    await update.message.reply_text(
-        "🎂 *Birthday Organizer Bot* is ready!\n\n"
-        "I'll help coordinate birthday gift collections for your team.\n\n"
-        "*To join this team:*\n"
-        "1️⃣ Each team member types `/join` in this chat\n"
-        "2️⃣ Then message me privately (@bithday_manager_bot) to set your birthday\n\n"
-        "When a birthday approaches, I'll post a collection announcement here!",
-        parse_mode="Markdown"
-    )
+        
+        # Send instructions privately to the user who added the bot
+        try:
+            await context.bot.send_message(
+                chat_id=user.id,
+                text=(
+                    f"🎂 *Birthday Organizer Bot* added to *{chat.title}*!\n\n"
+                    "The bot will only post birthday greetings in the group.\n\n"
+                    "*How to set up your team:*\n"
+                    "1️⃣ Ask all team members to type `/join` in the group\n"
+                    "2️⃣ Each member sets their birthday here (privately)\n"
+                    "3️⃣ Everyone gets private notifications about upcoming birthdays\n\n"
+                    "Use the menu below to set your birthday!"
+                ),
+                parse_mode="Markdown",
+                reply_markup=main_menu_keyboard()
+            )
+        except Exception as e:
+            logger.debug(f"Could not send private instructions to {user.id}: {e}")
 
 
 async def handle_private_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
