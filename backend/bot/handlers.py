@@ -193,8 +193,9 @@ async def handle_private_start(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         await db_service.create_user(new_user.model_dump())
         
+        display_name = get_display_name_from_telegram_user(user)
         await update.message.reply_text(
-            f"👋 Welcome, {user.first_name}!\n\n"
+            f"👋 Welcome, {display_name}!\n\n"
             "I'm the *Birthday Organizer Bot*. I help teams coordinate birthday gift collections.\n\n"
             "Let's get you set up:\n"
             "1️⃣ Set your birthday date\n"
@@ -205,8 +206,9 @@ async def handle_private_start(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=main_menu_keyboard()
         )
     else:
+        display_name = get_display_name_from_telegram_user(user)
         await update.message.reply_text(
-            f"👋 Welcome back, {user.first_name}!\n\n"
+            f"👋 Welcome back, {display_name}!\n\n"
             "What would you like to do?",
             reply_markup=main_menu_keyboard()
         )
