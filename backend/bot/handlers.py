@@ -214,6 +214,101 @@ async def handle_birthday_day_selection(query, data):
         parse_mode="Markdown",
         reply_markup=main_menu_keyboard()
     )
+    
+    # Check if birthday is within next 14 days and trigger immediate event creation
+    await check_and_create_immediate_event(user_id, date_of_birth, query.get_bot())
+
+
+async def check_and_create_immediate_event(user_id: int, date_of_birth: str, bot):
+    """Check if user's birthday is within 14 days and create event immediately"""
+    from bot.keyboards import join_collection_keyboard
+    
+    today = datetime.now(timezone.utc)
+    current_year = today.year
+    
+    # Parse MM-DD format
+    month, day = date_of_birth.split("-")
+    
+    # Calculate birthday date for this year
+    birthday_this_year = datetime(current_year, int(month), int(day), tzinfo=timezone.utc)
+    
+    # If birthday already passed this year, check next year
+    if birthday_this_year.date() < today.date():
+        birthday_this_year = datetime(current_year + 1, int(month), int(day), tzinfo=timezone.utc)
+    
+    days_until = (birthday_this_year.date() - today.date()).days
+    
+    # If birthday is within 14 days, create events for all teams
+    if 0 < days_until <= 14:
+        logger.info(f"Birthday for user {user_id} is in {days_until} days - creating immediate events")
+        
+        user = await db_service.get_user(user_id)
+        if not user:
+            return
+        
+        user_name = user.get('first_name', 'Team member')
+        birthday_full = birthday_this_year.strftime("%Y-%m-%d")
+        
+        # Create events for each team the user belongs to
+        for team_id in user.get('teams', []):
+            # Check if event already exists
+            existing = await db_service.get_event_by_person_and_date(
+                user_id, birthday_full, team_id
+            )
+            
+            if existing:
+                continue
+            
+            # Create new birthday event
+            event = BirthdayEvent(
+                birthday_person_id=user_id,
+                birthday_person_name=user_name,
+                team_id=team_id,
+                birthday_date=birthday_full,
+                status=EventStatus.VOTING,
+                wishlist_snapshot=user.get('wishlist', []),
+                voting_started_at=datetime.now(timezone.utc)
+            )
+            
+            await db_service.create_event(event.model_dump())
+            logger.info(f"Created immediate birthday event for {user_name} on {birthday_full}")
+            
+            # Announce in team chat
+            try:
+                await bot.send_message(
+                    chat_id=team_id,
+                    text=(
+                        f"🎂 *Upcoming Birthday Alert!*\n\n"
+                        f"{user_name}'s birthday is coming up on {birthday_full}!\n\n"
+                        f"Click below to join the gift collection and make their day special!"
+                    ),
+                    parse_mode="Markdown",
+                    reply_markup=join_collection_keyboard(event.id)
+                )
+                logger.info(f"Sent immediate birthday announcement to team {team_id}")
+            except Exception as e:
+                logger.error(f"Failed to send announcement to team {team_id}: {e}")
+            
+            # Notify all team members privately (except birthday person)
+            team_users = await db_service.get_users_by_team(team_id)
+            for member in team_users:
+                member_id = member.get('telegram_id')
+                if member_id == user_id:
+                    continue
+                
+                try:
+                    await bot.send_message(
+                        chat_id=member_id,
+                        text=(
+                            f"🎂 *Birthday Alert!*\n\n"
+                            f"{user_name}'s birthday is coming up on {birthday_full}!\n\n"
+                            f"Join the collection to participate in the gift!"
+                        ),
+                        parse_mode="Markdown",
+                        reply_markup=join_collection_keyboard(event.id)
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not notify member {member_id}: {e}")
 
 
 async def show_wishlist(query):
