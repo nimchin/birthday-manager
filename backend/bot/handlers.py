@@ -371,7 +371,7 @@ async def check_and_create_immediate_event(user_id: int, date_of_birth: str, bot
         if not user:
             return
         
-        user_name = user.get('first_name', 'Team member')
+        user_name = get_display_name(user)
         birthday_full = birthday_this_year.strftime("%Y-%m-%d")
         
         # Create events for each team the user belongs to
