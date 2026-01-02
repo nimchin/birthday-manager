@@ -70,6 +70,7 @@ class BirthdayEvent(BaseModel):
     wishlist_snapshot: List[WishlistItem] = Field(default_factory=list)
     selected_gift: Optional[str] = None
     total_price: Optional[float] = None
+    split_count: Optional[int] = None  # custom number of people to split cost
     payment_details: Optional[str] = None
     discussion_group_id: Optional[int] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
