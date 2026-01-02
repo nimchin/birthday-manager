@@ -1147,6 +1147,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_custom_gift_input(update, text, state_data.get("event_id"))
     elif state == "awaiting_price":
         await handle_price_input(update, text, state_data.get("event_id"))
+    elif state == "awaiting_split_count":
+        await handle_split_count_input(update, text, state_data.get("event_id"), state_data.get("price"))
     elif state == "awaiting_payment_details":
         await handle_payment_details_input(update, text, state_data.get("event_id"))
     elif state == "awaiting_discussion_link":
