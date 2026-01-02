@@ -723,8 +723,9 @@ async def show_event_details(query, data):
         text += f"\n🎁 Selected Gift: {event.get('selected_gift')}"
     
     if event.get('total_price'):
-        per_person = event['total_price'] / max(len(event.get('participants', [])), 1)
-        text += f"\n💵 Total: ${event['total_price']:.2f} (${per_person:.2f}/person)"
+        split_count = event.get('split_count') or len(event.get('participants', [])) or 1
+        per_person = event['total_price'] / split_count
+        text += f"\n💵 Total: {event['total_price']:.2f} ({per_person:.2f}/person)"
     
     if event.get('payment_details'):
         text += f"\n💳 Payment: {event.get('payment_details')}"
