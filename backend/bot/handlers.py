@@ -1234,7 +1234,9 @@ async def handle_price_input(update: Update, text: str, event_id: str):
     user_id = update.effective_user.id
     
     try:
-        price = float(text.replace("$", "").replace(",", "").strip())
+        # Remove common currency symbols and parse
+        clean_text = text.replace("$", "").replace("€", "").replace("£", "").replace(",", "").strip()
+        price = float(clean_text)
     except ValueError:
         await update.message.reply_text(
             "Please enter a valid number. Example: `49.99`",
@@ -1260,7 +1262,7 @@ async def handle_price_input(update: Update, text: str, event_id: str):
     }
     
     await update.message.reply_text(
-        f"💵 *Price Set: ${price:.2f}*\n\n"
+        f"💵 *Price Set: {price:.2f}*\n\n"
         f"📊 *Current stats:*\n"
         f"• Accepted participants: {participants_count}\n"
         f"• Total team members: {team_members_count}\n\n"
