@@ -973,23 +973,24 @@ async def show_finalize_options(query, data):
 
 async def handle_gift_selection(query, data):
     """Handle gift selection from wishlist"""
-    parts = data.replace("selectgift_", "").split("_")
-    event_id = parts[0]
-    item_id = parts[1]
+    # Format: sg_{short_event_id}_{item_index}
+    parts = data.replace("sg_", "").split("_")
+    short_event_id = parts[0]
+    item_idx = int(parts[1])
     user_id = query.from_user.id
     
-    event = await db_service.get_event(event_id)
+    event = await db_service.get_event_by_short_id(short_event_id)
     if not event or event.get('organizer_id') != user_id:
+        await query.edit_message_text("Only the organizer can finalize.", reply_markup=back_to_menu_keyboard())
         return
     
-    # Find selected item
-    selected_item = None
-    for item in event.get('wishlist_snapshot', []):
-        if item.get('id') == item_id:
-            selected_item = item
-            break
+    event_id = event.get('id')
+    wishlist = event.get('wishlist_snapshot', [])
     
-    if selected_item:
+    # Find selected item by index
+    if item_idx < len(wishlist):
+        selected_item = wishlist[item_idx]
+        
         await db_service.update_event(event_id, {
             "selected_gift": selected_item.get('title'),
             "status": "finalized",
@@ -1012,8 +1013,16 @@ async def handle_gift_selection(query, data):
 
 async def prompt_custom_gift(query, data):
     """Prompt for custom gift entry"""
-    event_id = data.replace("customgift_", "")
+    # Format: cg_{short_event_id}
+    short_event_id = data.replace("cg_", "")
     user_id = query.from_user.id
+    
+    event = await db_service.get_event_by_short_id(short_event_id)
+    if not event:
+        await query.edit_message_text("Event not found.", reply_markup=back_to_menu_keyboard())
+        return
+    
+    event_id = event.get('id')
     
     user_states[user_id] = {
         "state": "awaiting_custom_gift",
