@@ -82,6 +82,13 @@ class DatabaseService:
             {"_id": 0}
         )
     
+    async def get_event_by_short_id(self, short_id: str) -> Optional[Dict]:
+        """Find event by first 8 characters of ID"""
+        return await self.db.birthday_events.find_one(
+            {"id": {"$regex": f"^{short_id}"}},
+            {"_id": 0}
+        )
+    
     async def get_event_by_person_and_date(self, birthday_person_id: int, birthday_date: str, team_id: int) -> Optional[Dict]:
         return await self.db.birthday_events.find_one(
             {
