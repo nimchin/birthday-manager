@@ -679,6 +679,10 @@ async def show_event_details(query, data):
     contributions = await db_service.get_event_contributions(event_id)
     paid_count = sum(1 for c in contributions if c.get('status') == 'paid')
     
+    # Check if current user has contributed
+    user_contribution = await db_service.get_contribution(event_id, user_id)
+    has_contributed = user_contribution and user_contribution.get('status') == 'paid'
+    
     text = (
         f"🎂 *Birthday Collection*\n\n"
         f"👤 For: {event.get('birthday_person_name', 'Unknown')}\n"
@@ -705,7 +709,7 @@ async def show_event_details(query, data):
     await query.edit_message_text(
         text,
         parse_mode="Markdown",
-        reply_markup=event_actions_keyboard(event_id, is_organizer, has_organizer)
+        reply_markup=event_actions_keyboard(event_id, is_organizer, has_organizer, has_contributed)
     )
 
 
