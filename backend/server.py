@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
-from bot.handlers import start_command, handle_callback, handle_message, help_command, handle_new_chat_members, handle_group_message
+from bot.handlers import start_command, handle_callback, handle_message, help_command, handle_new_chat_members, handle_group_message, join_command
 from bot.scheduler import setup_scheduler, stop_scheduler
 from services.database import db_service
 
