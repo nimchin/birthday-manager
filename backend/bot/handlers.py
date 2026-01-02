@@ -1394,11 +1394,10 @@ async def handle_discussion_link_input(update: Update, text: str, event_id: str)
     event = await db_service.get_event(event_id)
     
     await update.message.reply_text(
-        f"✅ *Discussion Group Created!*\n\n"
+        f"✅ Discussion Group Created!\n\n"
         f"For: {event.get('birthday_person_name')}'s birthday\n\n"
         f"Participants can now click 'Join Discussion' to get the invite link.\n\n"
         f"⚠️ Remember: Don't add the birthday person to the group!",
-        parse_mode="Markdown",
         reply_markup=main_menu_keyboard()
     )
 
