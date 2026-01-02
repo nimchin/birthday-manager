@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Work+Sans:wght@400;500;600&display=swap');
+
 .App-logo {
     height: 40vmin;
     pointer-events: none;
@@ -31,4 +33,18 @@
     to {
         transform: rotate(360deg);
     }
+}
+
+/* Custom animations */
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 40px rgba(139, 92, 246, 0.6);
+    }
+}
+
+.animate-pulse-glow {
+    animation: pulse-glow 2s infinite;
 }
