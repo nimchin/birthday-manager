@@ -810,12 +810,24 @@ async def show_voting_options(query, data):
 
 async def handle_vote(query, data):
     """Handle vote for wishlist item"""
-    parts = data.replace("votewish_", "").split("_")
-    event_id = parts[0]
-    item_id = parts[1]
+    # Format: vw_{short_event_id}_{item_index}
+    parts = data.replace("vw_", "").split("_")
+    short_event_id = parts[0]
+    item_idx = int(parts[1])
     user_id = query.from_user.id
     
-    await db_service.vote_for_wishlist_item(event_id, item_id, user_id)
+    # Find event by short ID
+    event = await db_service.get_event_by_short_id(short_event_id)
+    if not event:
+        await query.edit_message_text("Event not found.", reply_markup=back_to_menu_keyboard())
+        return
+    
+    event_id = event.get('id')
+    wishlist = event.get('wishlist_snapshot', [])
+    
+    if item_idx < len(wishlist):
+        item_id = wishlist[item_idx].get('id')
+        await db_service.vote_for_wishlist_item(event_id, item_id, user_id)
     
     # Refresh voting view
     event = await db_service.get_event(event_id)
@@ -828,6 +840,19 @@ async def handle_vote(query, data):
         parse_mode="Markdown",
         reply_markup=wishlist_keyboard(wishlist, event_id, user_id)
     )
+
+
+async def handle_short_event_back(query, data):
+    """Handle back button from wishlist voting (uses short event ID)"""
+    short_event_id = data.replace("ev_", "")
+    
+    event = await db_service.get_event_by_short_id(short_event_id)
+    if not event:
+        await query.edit_message_text("Event not found.", reply_markup=back_to_menu_keyboard())
+        return
+    
+    # Show event details
+    await show_event_details(query, f"event_{event.get('id')}")
 
 
 async def handle_discussion_request(query, data):
