@@ -1336,14 +1336,13 @@ async def handle_payment_details_input(update: Update, text: str, event_id: str)
             await bot.send_message(
                 chat_id=participant_id,
                 text=(
-                    f"🎁 *Gift Collection Finalized!*\n\n"
-                    f"For: *{event.get('birthday_person_name')}*'s birthday\n\n"
+                    f"🎁 Gift Collection Finalized!\n\n"
+                    f"For: {event.get('birthday_person_name')}'s birthday\n\n"
                     f"🎁 Gift: {event.get('selected_gift')}\n"
-                    f"💵 Your share: *{per_person:.2f}*\n\n"
-                    f"💳 *Payment Details:*\n{text}\n\n"
+                    f"💵 Your share: {per_person:.2f}\n\n"
+                    f"💳 Payment Details:\n{text}\n\n"
                     f"Please send your contribution and mark it as paid in the bot!"
                 ),
-                parse_mode="Markdown",
                 reply_markup=main_menu_keyboard()
             )
         except Exception as e:
