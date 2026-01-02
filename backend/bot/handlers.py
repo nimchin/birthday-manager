@@ -830,10 +830,9 @@ async def show_voting_options(query, data):
         return
     
     await query.edit_message_text(
-        f"🗳️ *Vote for Gift*\n\n"
+        f"🗳️ Vote for Gift\n\n"
         f"For: {event.get('birthday_person_name')}\n\n"
         "Select items you think we should get:",
-        parse_mode="Markdown",
         reply_markup=wishlist_keyboard(wishlist, event_id, user_id)
     )
 
@@ -864,10 +863,9 @@ async def handle_vote(query, data):
     wishlist = event.get('wishlist_snapshot', [])
     
     await query.edit_message_text(
-        f"🗳️ *Vote for Gift*\n\n"
+        f"🗳️ Vote for Gift\n\n"
         f"For: {event.get('birthday_person_name')}\n\n"
         "Select items you think we should get:",
-        parse_mode="Markdown",
         reply_markup=wishlist_keyboard(wishlist, event_id, user_id)
     )
 
