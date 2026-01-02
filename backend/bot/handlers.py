@@ -424,13 +424,12 @@ async def check_and_create_immediate_event(user_id: int, date_of_birth: str, bot
                     await bot.send_message(
                         chat_id=member_id,
                         text=(
-                            f"🎂 *Birthday Coming Up!*\n\n"
-                            f"*{user_name}*'s birthday is on *{birthday_full}* ({days_until} days away)\n"
+                            f"🎂 Birthday Coming Up!\n\n"
+                            f"{user_name}'s birthday is on {birthday_full} ({days_until} days away)\n"
                             f"Team: {team_name}"
                             f"{wishlist_text}\n\n"
                             f"Would you like to participate in the gift collection?"
                         ),
-                        parse_mode="Markdown",
                         reply_markup=event_invitation_keyboard(event.id),
                         disable_web_page_preview=True
                     )
