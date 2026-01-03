@@ -582,6 +582,9 @@ async def handle_wishlist_delete(query, data):
     if user:
         wishlist = [item for item in user.get('wishlist', []) if item.get('id') != item_id]
         await db_service.update_user(user_id, {"wishlist": wishlist})
+        
+        # Update wishlist in all active events for this user
+        await db_service.update_user_wishlist_in_active_events(user_id, wishlist)
     
     await query.edit_message_text(
         "✅ Item removed from your wishlist!",
@@ -1186,6 +1189,9 @@ async def handle_wishlist_item_input(update: Update, text: str):
     wishlist.append(item.model_dump())
     
     await db_service.update_user(user_id, {"wishlist": wishlist})
+    
+    # Update wishlist in all active events for this user
+    await db_service.update_user_wishlist_in_active_events(user_id, wishlist)
     
     # Clear state
     user_states.pop(user_id, None)
