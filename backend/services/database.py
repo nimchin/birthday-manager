@@ -276,6 +276,59 @@ class DatabaseService:
                     break
         
         return await self.update_event(event_id, {"wishlist_snapshot": wishlist})
+    
+    async def update_user_wishlist_in_active_events(self, user_id: int, new_wishlist: List[Dict]) -> int:
+        """Update wishlist_snapshot in all active/voting events for a user
+        
+        Args:
+            user_id: Telegram user ID of the birthday person
+            new_wishlist: Updated wishlist items
+            
+        Returns:
+            Number of events updated
+        """
+        # Find all events where this user is the birthday person and status is 'upcoming' or 'voting'
+        events = await self.db.birthday_events.find(
+            {
+                "birthday_person_id": user_id,
+                "status": {"$in": ["upcoming", "voting"]}
+            },
+            {"_id": 0, "id": 1, "wishlist_snapshot": 1}
+        ).to_list(100)
+        
+        if not events:
+            return 0
+        
+        # For each event, preserve existing votes but update items
+        updated_count = 0
+        for event in events:
+            old_wishlist = event.get('wishlist_snapshot', [])
+            
+            # Create a mapping of old items by ID to preserve votes
+            old_items_map = {item.get('id'): item for item in old_wishlist}
+            
+            # Build updated wishlist with preserved votes
+            updated_wishlist = []
+            for new_item in new_wishlist:
+                item_id = new_item.get('id')
+                if item_id in old_items_map:
+                    # Item already exists - preserve votes and voted_by
+                    old_item = old_items_map[item_id]
+                    updated_item = new_item.copy()
+                    updated_item['votes'] = old_item.get('votes', 0)
+                    updated_item['voted_by'] = old_item.get('voted_by', [])
+                    updated_wishlist.append(updated_item)
+                else:
+                    # New item - use defaults from model
+                    updated_wishlist.append(new_item)
+            
+            # Update the event
+            result = await self.update_event(event.get('id'), {"wishlist_snapshot": updated_wishlist})
+            if result:
+                updated_count += 1
+        
+        logger.info(f"Updated wishlist in {updated_count} active events for user {user_id}")
+        return updated_count
 
 
 # Global instance
