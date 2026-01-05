@@ -76,12 +76,12 @@ async def check_upcoming_birthdays(bot: Bot):
             # Build wishlist text
             wishlist_text = ""
             if user.get('wishlist'):
-                wishlist_text = "\n\n*Wishlist:*\n"
+                wishlist_text = "\n\n<b>Wishlist:</b>\n"
                 for item in user.get('wishlist', [])[:5]:
                     title = item.get('title', 'Item')
                     url = item.get('url', '')
                     if url:
-                        wishlist_text += f"• [{title}]({url})\n"
+                        wishlist_text += f"• <a href='{url}'>{title}</a>\n"
                     else:
                         wishlist_text += f"• {title}\n"
             
@@ -95,13 +95,13 @@ async def check_upcoming_birthdays(bot: Bot):
                     await bot.send_message(
                         chat_id=member_id,
                         text=(
-                            f"🎂 *Birthday Coming Up!*\n\n"
-                            f"*{user_name}*'s birthday is on *{birthday_full}* (14 days away)\n"
+                            f"🎂 <b>Birthday Coming Up!</b>\n\n"
+                            f"<b>{user_name}</b>'s birthday is on <b>{birthday_full}</b> (14 days away)\n"
                             f"Team: {team_name}"
                             f"{wishlist_text}\n\n"
                             f"Would you like to participate in the gift collection?"
                         ),
-                        parse_mode="Markdown",
+                        parse_mode="HTML",
                         reply_markup=event_invitation_keyboard(event.id),
                         disable_web_page_preview=True
                     )
@@ -126,13 +126,13 @@ async def send_3_day_reminders(bot: Bot):
                 await bot.send_message(
                     chat_id=user_id,
                     text=(
-                        f"⏰ *Reminder!*\n\n"
+                        f"⏰ <b>Reminder!</b>\n\n"
                         f"{event.get('birthday_person_name')}'s birthday is in 3 days!\n\n"
                         f"Don't forget to:\n"
                         f"• Vote for a gift\n"
                         f"• Mark your contribution as paid\n"
                     ),
-                    parse_mode="Markdown"
+                    parse_mode="HTML"
                 )
             except Exception as e:
                 logger.debug(f"Could not send reminder to {user_id}: {e}")
@@ -154,11 +154,11 @@ async def send_1_day_reminders(bot: Bot):
                 await bot.send_message(
                     chat_id=user_id,
                     text=(
-                        f"🚨 *Last Day Reminder!*\n\n"
+                        f"🚨 <b>Last Day Reminder!</b>\n\n"
                         f"{event.get('birthday_person_name')}'s birthday is TOMORROW!\n\n"
                         f"Please mark your contribution as paid if you haven't already!"
                     ),
-                    parse_mode="Markdown"
+                    parse_mode="HTML"
                 )
             except Exception as e:
                 logger.debug(f"Could not send reminder to {user_id}: {e}")
@@ -187,12 +187,12 @@ async def send_organizer_reminders(bot: Bot):
                     await bot.send_message(
                         chat_id=organizer_id,
                         text=(
-                            f"📦 *Organizer Reminder!*\n\n"
+                            f"📦 <b>Organizer Reminder!</b>\n\n"
                             f"It's been {days_since} days since you finalized the gift for "
                             f"{event.get('birthday_person_name')}'s birthday.\n\n"
                             f"Don't forget to order the gift!"
                         ),
-                        parse_mode="Markdown"
+                        parse_mode="HTML"
                     )
                 except Exception as e:
                     logger.debug(f"Could not send organizer reminder to {organizer_id}: {e}")
@@ -205,9 +205,9 @@ async def send_birthday_greetings(bot: Bot):
     events = await db_service.get_todays_birthdays()
     
     greetings = [
-        "🎂🎉 *HAPPY BIRTHDAY* 🎉🎂",
-        "🎈🎁 *Happy Birthday!* 🎁🎈",
-        "🥳🎂 *Birthday Time!* 🎂🥳",
+        "🎂🎉 <b>HAPPY BIRTHDAY</b> 🎉🎂",
+        "🎈🎁 <b>Happy Birthday!</b> 🎁🎈",
+        "🥳🎂 <b>Birthday Time!</b> 🎂🥳",
     ]
     
     import random
@@ -226,7 +226,7 @@ async def send_birthday_greetings(bot: Bot):
                     f"Today we celebrate {birthday_person}! 🎊\n\n"
                     f"Wishing you an amazing day filled with joy and happiness! 🌟"
                 ),
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
             
             # Update event status
