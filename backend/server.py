@@ -232,6 +232,77 @@ async def trigger_greetings():
     return {"status": "Birthday greetings triggered"}
 
 
+@api_router.post("/trigger/3-day-reminders")
+async def trigger_3_day_reminders():
+    """Manually trigger 3-day reminders"""
+    if not bot:
+        raise HTTPException(status_code=503, detail="Bot not initialized")
+    
+    from bot.scheduler import send_3_day_reminders
+    await send_3_day_reminders(bot)
+    return {"status": "3-day reminders triggered"}
+
+
+@api_router.post("/trigger/1-day-reminders")
+async def trigger_1_day_reminders():
+    """Manually trigger 1-day reminders"""
+    if not bot:
+        raise HTTPException(status_code=503, detail="Bot not initialized")
+    
+    from bot.scheduler import send_1_day_reminders
+    await send_1_day_reminders(bot)
+    return {"status": "1-day reminders triggered"}
+
+
+@api_router.post("/trigger/all-scheduler-jobs")
+async def trigger_all_jobs():
+    """Manually trigger all scheduler jobs (for testing)"""
+    if not bot:
+        raise HTTPException(status_code=503, detail="Bot not initialized")
+    
+    from bot.scheduler import (
+        check_upcoming_birthdays, 
+        send_birthday_greetings,
+        send_3_day_reminders,
+        send_1_day_reminders,
+        send_organizer_reminders
+    )
+    
+    results = {}
+    
+    try:
+        await check_upcoming_birthdays(bot)
+        results['check_birthdays'] = 'success'
+    except Exception as e:
+        results['check_birthdays'] = f'error: {str(e)}'
+    
+    try:
+        await send_birthday_greetings(bot)
+        results['send_greetings'] = 'success'
+    except Exception as e:
+        results['send_greetings'] = f'error: {str(e)}'
+    
+    try:
+        await send_3_day_reminders(bot)
+        results['3_day_reminders'] = 'success'
+    except Exception as e:
+        results['3_day_reminders'] = f'error: {str(e)}'
+    
+    try:
+        await send_1_day_reminders(bot)
+        results['1_day_reminders'] = 'success'
+    except Exception as e:
+        results['1_day_reminders'] = f'error: {str(e)}'
+    
+    try:
+        await send_organizer_reminders(bot)
+        results['organizer_reminders'] = 'success'
+    except Exception as e:
+        results['organizer_reminders'] = f'error: {str(e)}'
+    
+    return {"status": "All jobs triggered", "results": results}
+
+
 # Include router
 app.include_router(api_router)
 
