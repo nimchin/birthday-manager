@@ -85,6 +85,21 @@ async def check_upcoming_birthdays(bot: Bot):
                     else:
                         wishlist_text += f"• {title}\n"
             
+            # Send notification to the GROUP chat (without spoiling the surprise)
+            try:
+                await bot.send_message(
+                    chat_id=team_id,
+                    text=(
+                        f"🎂 *Upcoming Birthday Alert!*\n\n"
+                        f"Someone in the team has a birthday coming up on *{birthday_full}*!\n\n"
+                        f"Check your private messages from me to participate in the gift collection! 🎁"
+                    ),
+                    parse_mode="Markdown"
+                )
+                logger.info(f"Sent group notification to team {team_id}")
+            except Exception as e:
+                logger.debug(f"Could not send group notification to team {team_id}: {e}")
+            
             # Send PRIVATE invitations to all team members (except birthday person)
             for member in users:
                 member_id = member.get('telegram_id')
