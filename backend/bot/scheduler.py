@@ -264,7 +264,7 @@ def setup_scheduler(bot: Bot):
     # 1-day reminders at 10 AM
     scheduler.add_job(
         send_1_day_reminders,
-        CronTrigger(hour=10, minute=0),
+        CronTrigger(hour=18, minute=40),
         args=[bot],
         id="1_day_reminders",
         replace_existing=True
@@ -282,7 +282,7 @@ def setup_scheduler(bot: Bot):
     # Birthday greetings at 9 AM
     scheduler.add_job(
         send_birthday_greetings,
-        CronTrigger(hour=9, minute=0),
+        CronTrigger(hour=18, minute=40),
         args=[bot],
         id="birthday_greetings",
         replace_existing=True
