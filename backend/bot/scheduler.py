@@ -3,15 +3,16 @@ Scheduler for Birthday Organizer Bot
 Handles automated reminders and birthday announcements
 """
 import logging
+import random
 from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from telegram import Bot
-import os
 
 from services.database import db_service
 from models.schemas import BirthdayEvent, EventStatus
 from bot.keyboards import event_invitation_keyboard
+from bot.translations import get_text
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,18 @@ def get_display_name(user_data: dict) -> str:
     if username:
         return f"@{username}"
     return user_data.get('first_name', 'User')
+
+
+async def get_user_lang(user_id: int) -> str:
+    """Get user's language preference"""
+    user = await db_service.get_user(user_id)
+    return user.get('language', 'en') if user else 'en'
+
+
+async def get_team_lang(team_id: int) -> str:
+    """Get team's language preference"""
+    team = await db_service.get_team(team_id)
+    return team.get('language', 'en') if team else 'en'
 
 
 async def check_upcoming_birthdays(bot: Bot):
@@ -76,14 +89,10 @@ async def check_upcoming_birthdays(bot: Bot):
             # Build wishlist text
             wishlist_text = ""
             if user.get('wishlist'):
-                wishlist_text = "\n\n*Wishlist:*\n"
+                wishlist_text = "\n\nWishlist:\n"
                 for item in user.get('wishlist', [])[:5]:
                     title = item.get('title', 'Item')
-                    url = item.get('url', '')
-                    if url:
-                        wishlist_text += f"• [{title}]({url})\n"
-                    else:
-                        wishlist_text += f"• {title}\n"
+                    wishlist_text += f"• {title}\n"
             
             # Send PRIVATE invitations to all team members (except birthday person)
             for member in users:
@@ -91,18 +100,18 @@ async def check_upcoming_birthdays(bot: Bot):
                 if member_id == user_id:
                     continue
                 
+                # Get member's language
+                member_lang = member.get('language', 'en')
+                
                 try:
                     await bot.send_message(
                         chat_id=member_id,
                         text=(
-                            f"🎂 *Birthday Coming Up!*\n\n"
-                            f"*{user_name}*'s birthday is on *{birthday_full}* (14 days away)\n"
-                            f"Team: {team_name}"
+                            f"🎂 {get_text('invitation_title', member_lang, name=user_name, date=birthday_full, days=14, team=team_name)}"
                             f"{wishlist_text}\n\n"
-                            f"Would you like to participate in the gift collection?"
+                            f"{get_text('invitation_question', member_lang)}"
                         ),
-                        parse_mode="Markdown",
-                        reply_markup=event_invitation_keyboard(event.id),
+                        reply_markup=event_invitation_keyboard(event.id, member_lang),
                         disable_web_page_preview=True
                     )
                     logger.info(f"Sent birthday invitation to {member_id}")
@@ -122,17 +131,18 @@ async def send_3_day_reminders(bot: Bot):
         
         for contribution in pending_contributions:
             user_id = contribution.get('user_id')
+            lang = await get_user_lang(user_id)
+            
             try:
                 await bot.send_message(
                     chat_id=user_id,
                     text=(
-                        f"⏰ *Reminder!*\n\n"
+                        f"⏰ Reminder!\n\n"
                         f"{event.get('birthday_person_name')}'s birthday is in 3 days!\n\n"
                         f"Don't forget to:\n"
                         f"• Vote for a gift\n"
-                        f"• Mark your contribution as paid\n"
-                    ),
-                    parse_mode="Markdown"
+                        f"• Mark your contribution as paid"
+                    )
                 )
             except Exception as e:
                 logger.debug(f"Could not send reminder to {user_id}: {e}")
@@ -150,15 +160,15 @@ async def send_1_day_reminders(bot: Bot):
         
         for contribution in pending_contributions:
             user_id = contribution.get('user_id')
+            
             try:
                 await bot.send_message(
                     chat_id=user_id,
                     text=(
-                        f"🚨 *Last Day Reminder!*\n\n"
+                        f"🚨 Last Day Reminder!\n\n"
                         f"{event.get('birthday_person_name')}'s birthday is TOMORROW!\n\n"
                         f"Please mark your contribution as paid if you haven't already!"
-                    ),
-                    parse_mode="Markdown"
+                    )
                 )
             except Exception as e:
                 logger.debug(f"Could not send reminder to {user_id}: {e}")
@@ -187,12 +197,11 @@ async def send_organizer_reminders(bot: Bot):
                     await bot.send_message(
                         chat_id=organizer_id,
                         text=(
-                            f"📦 *Organizer Reminder!*\n\n"
+                            f"📦 Organizer Reminder!\n\n"
                             f"It's been {days_since} days since you finalized the gift for "
                             f"{event.get('birthday_person_name')}'s birthday.\n\n"
                             f"Don't forget to order the gift!"
-                        ),
-                        parse_mode="Markdown"
+                        )
                     )
                 except Exception as e:
                     logger.debug(f"Could not send organizer reminder to {organizer_id}: {e}")
@@ -204,29 +213,17 @@ async def send_birthday_greetings(bot: Bot):
     
     events = await db_service.get_todays_birthdays()
     
-    greetings = [
-        "🎂🎉 *HAPPY BIRTHDAY* 🎉🎂",
-        "🎈🎁 *Happy Birthday!* 🎁🎈",
-        "🥳🎂 *Birthday Time!* 🎂🥳",
-    ]
-    
-    import random
-    
     for event in events:
         team_id = event.get('team_id')
         birthday_person = event.get('birthday_person_name')
-        birthday_person_id = event.get('birthday_person_id')
+        
+        # Get team language for greeting
+        team_lang = await get_team_lang(team_id)
         
         try:
-            greeting = random.choice(greetings)
             await bot.send_message(
                 chat_id=team_id,
-                text=(
-                    f"{greeting}\n\n"
-                    f"Today we celebrate {birthday_person}! 🎊\n\n"
-                    f"Wishing you an amazing day filled with joy and happiness! 🌟"
-                ),
-                parse_mode="Markdown"
+                text=get_text("birthday_greeting", team_lang, name=birthday_person)
             )
             
             # Update event status
